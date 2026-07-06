@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Servis Takip & Bildirim Sistemi** — Multi-tenant SaaS platform that sends automatic notifications (Telegram / SMS) to passengers when their company shuttle approaches. Companies subscribe independently; all data is isolated by `company_id`.
+**ShuttlePing** (Servis Takip & Bildirim Sistemi) — Multi-tenant SaaS platform that sends automatic notifications (Telegram / SMS) to passengers when their company shuttle approaches. Companies subscribe independently; all data is isolated by `company_id`.
 
 ## Commands
 
