@@ -1,16 +1,16 @@
-import { ingestLocationSchema, getLocationSchema } from './schema.js'
+import { ingestLocationSchema, getLocationSchema, getEtaSchema } from './schema.js'
+import { locationKey, etaKey } from '../../../services/eta/index.js'
+import { enqueueEtaJob } from '../../../queues/index.js'
 
 // Son konum Redis'te tutulur; araç yayın kesilirse 5 dk sonra "çevrimdışı" sayılır
 const LOCATION_TTL_SECONDS = 300
-
-const locationKey = (companyId, routeId) => `loc:${companyId}:${routeId}`
 
 export default async function locationRoutes(fastify) {
   /**
    * POST /api/v1/locations
    * Sürücü (Android app) anlık konum gönderir.
-   * Sürücünün atandığı aktif güzergah bulunur, son konum Redis'e yazılır.
-   * Faz 3'te ETA worker'ı, Faz 6'da SSE canlı harita bu veriyi okur.
+   * Sürücünün atandığı aktif güzergah bulunur, son konum Redis'e yazılır,
+   * ETA worker'ı için kuyruğa job atılır.
    */
   fastify.post(
     '/',
@@ -46,6 +46,8 @@ export default async function locationRoutes(fastify) {
         LOCATION_TTL_SECONDS,
       )
 
+      await enqueueEtaJob({ companyId, routeId })
+
       return { ok: true, routeId }
     },
   )
@@ -62,6 +64,22 @@ export default async function locationRoutes(fastify) {
         locationKey(request.user.companyId, request.params.routeId),
       )
       if (!raw) return reply.notFound('Bu güzergah için güncel konum yok')
+      return JSON.parse(raw)
+    },
+  )
+
+  /**
+   * GET /api/v1/locations/:routeId/eta
+   * ETA worker'ının son hesapladığı durak bazlı varış süreleri.
+   */
+  fastify.get(
+    '/:routeId/eta',
+    { schema: getEtaSchema, onRequest: [fastify.requireRole(['company_admin'])] },
+    async (request, reply) => {
+      const raw = await fastify.redis.get(
+        etaKey(request.user.companyId, request.params.routeId),
+      )
+      if (!raw) return reply.notFound('Bu güzergah için güncel ETA yok')
       return JSON.parse(raw)
     },
   )

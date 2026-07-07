@@ -30,6 +30,11 @@ export const env = {
 
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
+  // ETA motoru (Faz 3) — anahtar yoksa haversine fallback kullanılır
+  GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? null,
+  ETA_FALLBACK_SPEED_KMH: Number(process.env.ETA_FALLBACK_SPEED_KMH ?? 25),
+  ETA_DEDUP_TTL_SECONDS: Number(process.env.ETA_DEDUP_TTL_SECONDS ?? 2700),
+
   isProd: process.env.NODE_ENV === 'production',
   isDev: process.env.NODE_ENV !== 'production',
 }

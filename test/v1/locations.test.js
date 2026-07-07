@@ -48,3 +48,25 @@ describe('GET /api/v1/locations/:routeId', () => {
     expect(res.statusCode).toBe(403)
   })
 })
+
+describe('GET /api/v1/locations/:routeId/eta', () => {
+  it('driver rolüyle 403 döner (sadece company_admin)', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/eta',
+      headers: await authHeader('driver'),
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('ETA hesaplanmamışsa 404 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/eta',
+      headers: await authHeader('company_admin'),
+    })
+    expect(res.statusCode).toBe(404)
+  })
+})

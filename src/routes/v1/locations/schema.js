@@ -22,3 +22,5 @@ export const getLocationSchema = {
     },
   },
 }
+
+export const getEtaSchema = getLocationSchema

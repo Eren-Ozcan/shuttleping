@@ -14,6 +14,7 @@ import vehicleRoutes from './routes/v1/vehicles/index.js'
 import routeRoutes from './routes/v1/routes/index.js'
 import passengerRoutes from './routes/v1/passengers/index.js'
 import locationRoutes from './routes/v1/locations/index.js'
+import { closeQueues } from './queues/index.js'
 
 /**
  * @param {object} opts - Fastify seçeneklerini override etmek için (test'te logger: false)
@@ -52,6 +53,9 @@ export async function buildApp(opts = {}) {
 
   // Health check (Railway probe için)
   fastify.get('/health', { logLevel: 'silent' }, async () => ({ status: 'ok' }))
+
+  // Route handler'ları lazy kuyruk oluşturduysa bağlantıları app ile kapat
+  fastify.addHook('onClose', () => closeQueues())
 
   return fastify
 }
