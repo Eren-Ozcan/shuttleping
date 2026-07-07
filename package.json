@@ -9,18 +9,12 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "migrate:up": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create",
+    "migrate:up": "node-pg-migrate up -m src/db/migrations",
+    "migrate:down": "node-pg-migrate down -m src/db/migrations",
+    "migrate:create": "node-pg-migrate create -m src/db/migrations",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src test"
-  },
-  "node-pg-migrate": {
-    "dir": "src/db/migrations",
-    "databaseUrl": "DATABASE_URL",
-    "migrationsTable": "pgmigrations",
-    "decamelize": true
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",

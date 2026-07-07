@@ -13,7 +13,11 @@ async function redisPlugin(fastify) {
   redis.on('connect', () => logger.info('Redis connected'))
 
   fastify.decorate('redis', redis)
-  fastify.addHook('onClose', async () => redis.quit())
+  fastify.addHook('onClose', async () => {
+    // quit() cevabı gelmeden soket kapanırsa "Connection is closed" ile
+    // reject eder — kapanış sırasında bu zararsızdır, bağlantıyı koparıp geç.
+    await redis.quit().catch(() => redis.disconnect())
+  })
 }
 
 export default fp(redisPlugin, { name: 'redis' })
