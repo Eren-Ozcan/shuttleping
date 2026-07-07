@@ -43,10 +43,9 @@ npm run lint
 | Kuyruk | BullMQ + Redis (AOF persistence) |
 | Auth | JWT access token (15dk) + opaque refresh token (7g, HttpOnly cookie) |
 | Logger | Pino — structured JSON, no `console.log` |
-| ETA | Google Maps Distance Matrix API |
+| ETA | Google Maps Distance Matrix API (anahtar yoksa haversine fallback) |
 | Bildirim | Telegram Bot API + Netgsm SMS |
 | Admin UI | React (Türkçe) |
-| Mobil | Native Android min. 8.0 |
 | Hosting | Railway (staging + prod, zero-downtime) |
 
 ### Klasör Yapısı
@@ -62,6 +61,10 @@ src/
     auth.js              — JWT plugin, fastify.authenticate, fastify.requireRole(roles)
   routes/v1/             — Her klasör: index.js (handler) + schema.js (JSON Schema)
   services/              — İş mantığı; route handler'lardan çağrılır
+    eta/                 — ETA hesaplama (Distance Matrix + haversine fallback)
+    notifications/       — Kanal adapter'ları (telegram, sms) + dispatcher
+  queues/                — BullMQ kuyrukları (eta, notifications), lazy singleton
+  workers/               — Kuyruk worker'ları; server process'i içinde çalışır
   utils/logger.js        — Pino instance
 test/
   helpers/app.js         — Test için buildApp() wrapper
@@ -76,7 +79,7 @@ test/
 |-----|--------|
 | `super_admin` | Platform sahibi; şirket yönetimi |
 | `company_admin` | Kendi şirketi dahilinde tam yetki |
-| `driver` | Sadece Android uygulaması; kısıtlı kapsam |
+| `driver` | Konum gönderen sürücü istemcisi; kısıtlı kapsam |
 
 ## Geliştirme Kuralları
 - **Soft delete:** Hiçbir kayıt fiziksel olarak silinmez → `is_active = false`
@@ -90,14 +93,14 @@ test/
 ## Geliştirme Fazları
 | Faz | İçerik | Durum |
 |-----|--------|-------|
-| 1 | Backend temeli — Fastify + PostgreSQL + Redis + JWT auth | 🚧 Aktif |
-| 2 | Android sürücü uygulaması | — |
-| 3 | ETA motoru — BullMQ + Google Maps Distance Matrix | — |
-| 4 | Bildirim servisi — Telegram Bot + Netgsm SMS | — |
+| 1 | Backend temeli — Fastify + PostgreSQL + Redis + JWT auth | ✅ Tamamlandı |
+| 2 | Android sürücü uygulaması | ❌ İptal — mobil app yapılmayacak |
+| 3 | ETA motoru — BullMQ + Google Maps Distance Matrix | ✅ Tamamlandı |
+| 4 | Bildirim servisi — Telegram Bot + Netgsm SMS | ✅ Tamamlandı |
 | 5 | Admin panel — React (Türkçe UI) | — |
 | 6 | Canlı harita + SSE takip sayfası | — |
 | 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | — |
-| 8 | Faturalama + Play Store | — |
+| 8 | Faturalama | — |
 
 ## Environment Variables
 `.env.example` dosyasına bak. `src/config/env.js` başlangıçta tüm zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.

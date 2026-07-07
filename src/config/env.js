@@ -35,6 +35,13 @@ export const env = {
   ETA_FALLBACK_SPEED_KMH: Number(process.env.ETA_FALLBACK_SPEED_KMH ?? 25),
   ETA_DEDUP_TTL_SECONDS: Number(process.env.ETA_DEDUP_TTL_SECONDS ?? 2700),
 
+  // Bildirim kanalları (Faz 4) — boş bırakılan kanal devre dışı kalır,
+  // gönderim denemesi notification_logs'a 'failed' olarak düşer
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
+  NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
+  NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,
+  NETGSM_MSGHEADER: process.env.NETGSM_MSGHEADER ?? null,
+
   isProd: process.env.NODE_ENV === 'production',
   isDev: process.env.NODE_ENV !== 'production',
 }

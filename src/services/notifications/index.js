@@ -1,9 +1,10 @@
 /**
  * Kanal-bağımsız bildirim dispatcher'ı.
  *
- * Her kanal aynı arayüzü uygular: send({ passenger, message }) → { ok, error? }
+ * Her kanal aynı arayüzü uygular:
+ *   send({ passenger, message }) → { ok, error?, retryable? }
+ * retryable: true dönen hatalar BullMQ tarafından yeniden denenir.
  * Yeni kanal eklemek (örn. mobil push/FCM) = CHANNELS map'ine adapter eklemek.
- * Gerçek API entegrasyonları Faz 4'te doldurulacak.
  */
 import { logger } from '../../utils/logger.js'
 import * as telegram from './telegram.js'
