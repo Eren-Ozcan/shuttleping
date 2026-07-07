@@ -1,0 +1,385 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --sidebar: #0f172a;
+  --danger: #b91c1c;
+  --ok-bg: #dcfce7;
+  --ok-text: #166534;
+  --off-bg: #fee2e2;
+  --off-text: #991b1b;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+
+/* ── Layout ─────────────────────────────────────────── */
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: var(--sidebar);
+  color: #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0;
+  flex-shrink: 0;
+}
+
+.brand {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  padding: 0.5rem 1.25rem 1.25rem;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.sidebar nav a {
+  color: #cbd5e1;
+  text-decoration: none;
+  padding: 0.65rem 1.25rem;
+  border-left: 3px solid transparent;
+}
+
+.sidebar nav a:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sidebar nav a.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-left-color: #3b82f6;
+  color: #fff;
+}
+
+.sidebar-footer {
+  padding: 1rem 1.25rem 0.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-name {
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  min-width: 0;
+}
+
+.page h1 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Kartlar / formlar ──────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-inline {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+  align-items: center;
+}
+
+input,
+select {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  width: 100%;
+}
+
+.form-inline input {
+  width: auto;
+  flex: 1;
+  min-width: 160px;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid #93c5fd;
+  border-color: var(--primary);
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.inline-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+/* ── Butonlar ───────────────────────────────────────── */
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+
+.btn-ghost:hover {
+  background: #eff6ff;
+}
+
+/* ── Tablo ──────────────────────────────────────────── */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  background: #f8fafc;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover td {
+  background: #f8fafc;
+}
+
+.row-selected td {
+  background: #eff6ff !important;
+}
+
+.row-inactive td {
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.badge-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.badge-off {
+  background: var(--off-bg);
+  color: var(--off-text);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.error {
+  background: var(--off-bg);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.notice {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.cell-message {
+  max-width: 340px;
+}
+
+/* ── Güzergah detay ─────────────────────────────────── */
+.split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 1100px) {
+  .split {
+    grid-template-columns: 1fr 1.2fr;
+    align-items: start;
+  }
+}
+
+.detail h2 {
+  margin-bottom: 0.75rem;
+}
+
+.detail h3 {
+  margin: 1.25rem 0 0.6rem;
+}
+
+.detail label {
+  margin-bottom: 0.6rem;
+}
+
+/* ── Canlı harita ───────────────────────────────────── */
+.map-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.map-toolbar select {
+  width: auto;
+  min-width: 240px;
+}
+
+.map-wrap {
+  position: relative;
+}
+
+.map {
+  height: calc(100vh - 200px);
+  min-height: 420px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.eta-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.eta-panel h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.eta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+}
+
+/* ── Login ──────────────────────────────────────────── */
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--sidebar);
+}
+
+.login-card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 2rem;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.login-card h1 {
+  font-size: 1.3rem;
+  text-align: center;
+}
+
+.login-card .muted {
+  text-align: center;
+  margin-top: -0.5rem;
+}

@@ -1,6 +1,9 @@
+import path from 'node:path'
+import { existsSync } from 'node:fs'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
+import fastifyStatic from '@fastify/static'
 import sensible from '@fastify/sensible'
 import { env } from './config/env.js'
 import { logger } from './utils/logger.js'
@@ -76,6 +79,23 @@ export async function buildApp(opts = {}) {
     reply.code(healthy ? 200 : 503)
     return { status: healthy ? 'ok' : 'degraded', ...checks }
   })
+
+  // Statik dosyalar: public/driver.html (sürücü istemcisi) ve
+  // public/admin/ (React panel build çıktısı — `npm run build:admin`)
+  const publicDir = path.join(process.cwd(), 'public')
+  if (existsSync(publicDir)) {
+    await fastify.register(fastifyStatic, { root: publicDir })
+
+    fastify.setNotFoundHandler((request, reply) => {
+      // SPA fallback: /admin altındaki derin linkler index.html'e düşer
+      const wantsAdmin =
+        request.method === 'GET' &&
+        request.url.startsWith('/admin') &&
+        existsSync(path.join(publicDir, 'admin', 'index.html'))
+      if (wantsAdmin) return reply.sendFile('admin/index.html')
+      return reply.notFound(`${request.method} ${request.url} bulunamadı`)
+    })
+  }
 
   // Route handler'ları lazy kuyruk oluşturduysa bağlantıları app ile kapat
   fastify.addHook('onClose', () => closeQueues())

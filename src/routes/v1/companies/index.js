@@ -1,4 +1,9 @@
-import { createCompanySchema, listCompaniesSchema } from './schema.js'
+import {
+  createCompanySchema,
+  createCompanyAdminSchema,
+  listCompaniesSchema,
+} from './schema.js'
+import { hashPassword } from '../../../services/auth.service.js'
 
 export default async function companyRoutes(fastify) {
   /**
@@ -53,6 +58,45 @@ export default async function companyRoutes(fastify) {
         // PostgreSQL unique violation
         if (err.code === '23505') {
           return reply.conflict('Bu slug zaten kullanımda')
+        }
+        throw err
+      }
+    },
+  )
+
+  /**
+   * POST /api/v1/companies/:id/admins
+   * Şirketin (ilk) yöneticisini oluşturur. Sadece super_admin —
+   * onboarding akışı: şirket aç → yöneticisini ata → gerisini o yönetir.
+   */
+  fastify.post(
+    '/:id/admins',
+    {
+      schema: createCompanyAdminSchema,
+      onRequest: [fastify.requireRole(['super_admin'])],
+    },
+    async (request, reply) => {
+      const { rows: companies } = await fastify.db.query(
+        'SELECT id FROM companies WHERE id = $1 AND is_active = true',
+        [request.params.id],
+      )
+      if (!companies[0]) return reply.notFound('Şirket bulunamadı')
+
+      const { email, password, fullName, phone } = request.body
+      const passwordHash = await hashPassword(password)
+
+      try {
+        const { rows } = await fastify.db.query(
+          `INSERT INTO users (company_id, email, password_hash, role, full_name, phone)
+           VALUES ($1, $2, $3, 'company_admin', $4, $5)
+           RETURNING id, email, role, full_name AS "fullName", phone,
+                     is_active AS "isActive", created_at AS "createdAt"`,
+          [request.params.id, email, passwordHash, fullName, phone ?? null],
+        )
+        return reply.code(201).send(rows[0])
+      } catch (err) {
+        if (err.code === '23505') {
+          return reply.conflict('Bu e-posta zaten kayıtlı')
         }
         throw err
       }

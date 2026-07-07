@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShuttlePing Sürücü</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; display: grid; place-items: center; padding: 1rem;
+    }
+    .card {
+      background: #1e293b; border-radius: 14px; padding: 1.5rem;
+      width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 0.8rem;
+    }
+    h1 { font-size: 1.2rem; text-align: center; }
+    input {
+      padding: 0.8rem; border-radius: 8px; border: 1px solid #334155;
+      background: #0f172a; color: #e2e8f0; font: inherit; width: 100%;
+    }
+    button {
+      padding: 0.9rem; border: none; border-radius: 8px; font: inherit;
+      font-weight: 600; cursor: pointer; width: 100%;
+    }
+    .btn-start { background: #16a34a; color: #fff; }
+    .btn-stop { background: #dc2626; color: #fff; }
+    .status {
+      text-align: center; padding: 0.8rem; border-radius: 8px;
+      background: #0f172a; font-size: 0.9rem; min-height: 3em;
+    }
+    .pulse { color: #4ade80; }
+    .err { color: #f87171; }
+    .hidden { display: none; }
+    .muted { color: #94a3b8; font-size: 0.8rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚌 ShuttlePing Sürücü</h1>
+
+    <div id="loginForm">
+      <div style="display:flex;flex-direction:column;gap:0.8rem">
+        <input id="email" type="email" placeholder="E-posta" autocomplete="username" />
+        <input id="password" type="password" placeholder="Şifre" autocomplete="current-password" />
+        <button class="btn-start" onclick="girisYap()">Giriş Yap</button>
+      </div>
+    </div>
+
+    <div id="trackPanel" class="hidden">
+      <div style="display:flex;flex-direction:column;gap:0.8rem">
+        <div id="driverName" class="muted"></div>
+        <button id="toggleBtn" class="btn-start" onclick="yayiniDegistir()">Yayına Başla</button>
+      </div>
+    </div>
+
+    <div id="status" class="status">Giriş yapın</div>
+    <div class="muted">Konum yalnızca yayın açıkken gönderilir.<br />Ekran kilitlenirse yayın durabilir.</div>
+  </div>
+
+  <script>
+    const API = '/api/v1'
+    const SEND_INTERVAL_MS = 10_000 // en sık 10 sn'de bir gönder
+
+    let accessToken = null
+    let watchId = null
+    let lastSentAt = 0
+
+    const $ = (id) => document.getElementById(id)
+    const setStatus = (text, cls = '') => {
+      const el = $('status')
+      el.textContent = text
+      el.className = 'status ' + cls
+    }
+
+    async function girisYap() {
+      setStatus('Giriş yapılıyor…')
+      try {
+        const res = await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.message || 'Giriş başarısız')
+        if (data.user.role !== 'driver') throw new Error('Bu sayfa sadece sürücüler içindir')
+
+        accessToken = data.accessToken
+        $('loginForm').classList.add('hidden')
+        $('trackPanel').classList.remove('hidden')
+        $('driverName').textContent = data.user.fullName
+        setStatus('Hazır — yayına başlayabilirsiniz')
+      } catch (err) {
+        setStatus(err.message, 'err')
+      }
+    }
+
+    function yayiniDegistir() {
+      if (watchId !== null) return yayiniDurdur()
+
+      if (!navigator.geolocation) {
+        return setStatus('Tarayıcınız konum servisini desteklemiyor', 'err')
+      }
+      watchId = navigator.geolocation.watchPosition(konumGonder, konumHatasi, {
+        enableHighAccuracy: true,
+        maximumAge: 5_000,
+      })
+      $('toggleBtn').textContent = 'Yayını Durdur'
+      $('toggleBtn').className = 'btn-stop'
+      setStatus('Yayın açık — konum bekleniyor…', 'pulse')
+    }
+
+    function yayiniDurdur() {
+      navigator.geolocation.clearWatch(watchId)
+      watchId = null
+      $('toggleBtn').textContent = 'Yayına Başla'
+      $('toggleBtn').className = 'btn-start'
+      setStatus('Yayın durduruldu')
+    }
+
+    async function konumGonder(position) {
+      const now = Date.now()
+      if (now - lastSentAt < SEND_INTERVAL_MS) return
+      lastSentAt = now
+
+      const { latitude, longitude, heading, speed } = position.coords
+      try {
+        const res = await fetch(`${API}/locations`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            lat: latitude,
+            lng: longitude,
+            heading: heading ?? undefined,
+            speed: speed ?? undefined,
+          }),
+        })
+        const data = await res.json()
+        if (res.status === 401) {
+          yayiniDurdur()
+          return setStatus('Oturum süresi doldu — tekrar giriş yapın', 'err')
+        }
+        if (!res.ok) throw new Error(data.message || `Hata ${res.status}`)
+        setStatus(`Canlı 🟢 son gönderim ${new Date().toLocaleTimeString('tr-TR')}`, 'pulse')
+      } catch (err) {
+        setStatus(`Gönderim hatası: ${err.message}`, 'err')
+      }
+    }
+
+    function konumHatasi(err) {
+      setStatus(
+        err.code === 1 ? 'Konum izni reddedildi — tarayıcı ayarlarından izin verin' : `Konum hatası: ${err.message}`,
+        'err',
+      )
+    }
+  </script>
+</body>
+</html>

@@ -19,6 +19,10 @@ npm run migrate:down                 # Son migration'ı geri al
 npm run migrate:create -- --name foo # Yeni migration oluştur
 
 npm run dev                          # Dev server (--watch ile auto-restart)
+
+cd admin && npm install && npm run dev  # Admin panel dev (5173, /api proxy'li)
+npm run build:admin                  # Paneli public/admin'e derle (Fastify servis eder)
+npm run backup                       # pg_dump yedeği (backups/, docker fallback'li)
 ```
 
 ### Testing (commit öncesi zorunlu)
@@ -66,6 +70,10 @@ src/
   queues/                — BullMQ kuyrukları (eta, notifications), lazy singleton
   workers/               — Kuyruk worker'ları; server process'i içinde çalışır
   utils/logger.js        — Pino instance
+admin/                   — React yönetim paneli (Vite; build → public/admin)
+public/
+  driver.html            — Sürücü web istemcisi (geolocation → konum ingest)
+  admin/                 — Panel build çıktısı (gitignore'da; npm run build:admin)
 test/
   helpers/app.js         — Test için buildApp() wrapper
   v1/                    — Route testleri (src/routes/v1/ yapısını yansıtır)
@@ -97,10 +105,12 @@ test/
 | 2 | Android sürücü uygulaması | ❌ İptal — mobil app yapılmayacak |
 | 3 | ETA motoru — BullMQ + Google Maps Distance Matrix | ✅ Tamamlandı |
 | 4 | Bildirim servisi — Telegram Bot + Netgsm SMS | ✅ Tamamlandı |
-| 5 | Admin panel — React (Türkçe UI) | — |
-| 6 | Canlı harita + SSE takip sayfası | — |
-| 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | — |
-| 8 | Faturalama | — |
+| 5 | Admin panel — React (Türkçe UI) | ✅ Tamamlandı |
+| 6 | Canlı harita + SSE takip sayfası | ✅ Tamamlandı |
+| 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | ✅ Tamamlandı |
+| 8 | Faturalama | ⏸ Ödeme sağlayıcı kararı bekleniyor |
+
+Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
 
 ## Environment Variables
 `.env.example` dosyasına bak. `src/config/env.js` başlangıçta tüm zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.

@@ -23,6 +23,28 @@ export const createCompanySchema = {
   },
 }
 
+export const createCompanyAdminSchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+    },
+  },
+  body: {
+    type: 'object',
+    required: ['email', 'password', 'fullName'],
+    additionalProperties: false,
+    properties: {
+      email: { type: 'string', format: 'email', maxLength: 254 },
+      password: { type: 'string', minLength: 8, maxLength: 128 },
+      fullName: { type: 'string', minLength: 2, maxLength: 100 },
+      phone: { type: 'string', minLength: 7, maxLength: 20 },
+    },
+  },
+}
+
 export const listCompaniesSchema = {
   querystring: {
     type: 'object',
