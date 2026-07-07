@@ -24,3 +24,15 @@ export const getLocationSchema = {
 }
 
 export const getEtaSchema = getLocationSchema
+
+export const streamSchema = {
+  params: getLocationSchema.params,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      // EventSource header taşıyamadığı için token query ile de gelebilir
+      token: { type: 'string' },
+    },
+  },
+}

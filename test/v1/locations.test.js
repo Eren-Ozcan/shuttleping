@@ -70,3 +70,25 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
     expect(res.statusCode).toBe(404)
   })
 })
+
+describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
+  it('token olmadan 401 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream',
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('driver token\'ıyla 403 döner (sadece company_admin)', async () => {
+    const app = await getTestApp()
+    const { authorization } = await authHeader('driver')
+    const token = authorization.replace('Bearer ', '')
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/00000000-0000-4000-8000-000000000001/stream?token=${token}`,
+    })
+    expect(res.statusCode).toBe(403)
+  })
+})

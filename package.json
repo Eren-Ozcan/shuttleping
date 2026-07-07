@@ -12,6 +12,7 @@
     "migrate:up": "node-pg-migrate up -m src/db/migrations",
     "migrate:down": "node-pg-migrate down -m src/db/migrations",
     "migrate:create": "node-pg-migrate create -m src/db/migrations",
+    "backup": "node scripts/backup.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src test"
