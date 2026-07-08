@@ -108,7 +108,7 @@ test/
 | 5 | Admin panel — React (Türkçe UI) | ✅ Tamamlandı |
 | 6 | Canlı harita + SSE takip sayfası | ✅ Tamamlandı |
 | 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | ✅ Tamamlandı |
-| 8 | Faturalama | ⏸ Ödeme sağlayıcı kararı bekleniyor |
+| 8 | Faturalama — manuel ödeme takibi (elden/IBAN, gateway yok) | ✅ Tamamlandı |
 
 Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
 

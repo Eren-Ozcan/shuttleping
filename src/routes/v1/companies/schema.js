@@ -17,6 +17,45 @@ export const createCompanySchema = {
         name: { type: 'string' },
         slug: { type: 'string' },
         isActive: { type: 'boolean' },
+        paymentStatus: { type: 'string' },
+        lastPaymentDate: { type: ['string', 'null'] },
+        nextDueDate: { type: ['string', 'null'] },
+        createdAt: { type: 'string' },
+      },
+    },
+  },
+}
+
+export const updatePaymentStatusSchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+    },
+  },
+  body: {
+    type: 'object',
+    required: ['paymentStatus'],
+    additionalProperties: false,
+    properties: {
+      paymentStatus: { type: 'string', enum: ['active', 'overdue'] },
+      // Sadece paymentStatus: 'active' ile birlikte anlamlı; verilmezse +30 gün varsayılır
+      nextDueDate: { type: 'string', format: 'date-time' },
+    },
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        slug: { type: 'string' },
+        isActive: { type: 'boolean' },
+        paymentStatus: { type: 'string' },
+        lastPaymentDate: { type: ['string', 'null'] },
+        nextDueDate: { type: ['string', 'null'] },
         createdAt: { type: 'string' },
       },
     },

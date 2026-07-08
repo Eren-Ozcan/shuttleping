@@ -34,6 +34,16 @@ export default function Companies() {
     }
   }
 
+  async function markPaymentStatus(companyId, paymentStatus) {
+    setError(null)
+    try {
+      await api(`/companies/${companyId}/payment-status`, { method: 'PATCH', body: { paymentStatus } })
+      await load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   return (
     <div className="page">
       <h1>Şirketler</h1>
@@ -134,7 +144,10 @@ export default function Companies() {
             <th>Ad</th>
             <th>Slug</th>
             <th>Durum</th>
+            <th>Ödeme</th>
+            <th>Son Vade</th>
             <th>Kayıt</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -147,12 +160,31 @@ export default function Companies() {
                   {c.isActive ? 'Aktif' : 'Pasif'}
                 </span>
               </td>
+              <td>
+                <span className={`badge ${c.paymentStatus === 'overdue' ? 'badge-off' : 'badge-ok'}`}>
+                  {c.paymentStatus === 'overdue' ? 'Gecikmiş' : 'Ödeme Güncel'}
+                </span>
+              </td>
+              <td className="mono">
+                {c.nextDueDate ? new Date(c.nextDueDate).toLocaleDateString('tr-TR') : '—'}
+              </td>
               <td className="mono">{new Date(c.createdAt).toLocaleDateString('tr-TR')}</td>
+              <td>
+                {c.paymentStatus === 'overdue' ? (
+                  <button className="btn btn-primary" onClick={() => markPaymentStatus(c.id, 'active')}>
+                    Ödeme Alındı
+                  </button>
+                ) : (
+                  <button className="btn btn-ghost" onClick={() => markPaymentStatus(c.id, 'overdue')}>
+                    Gecikti İşaretle
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
           {companies.length === 0 && (
             <tr>
-              <td colSpan="4" className="muted">
+              <td colSpan="7" className="muted">
                 Henüz şirket yok
               </td>
             </tr>

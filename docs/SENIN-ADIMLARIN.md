@@ -69,10 +69,14 @@ Yerelde `npm run backup` çalışıyor. Prod için önerim: Railway cron
 (veya GitHub Actions scheduled workflow) ile günlük `pg_dump`.
 Karar verirsen workflow dosyasını ben yazarım.
 
-## 9. Faz 8 kararı: Faturalama
-İki karar gerekiyor, sonrasını ben implemente ederim:
-- **Ödeme sağlayıcı:** iyzico / PayTR (TR odaklı, TL) vs Stripe (yurt dışı)
-- **Fiyatlandırma modeli:** şirket başına sabit aylık mı, araç/yolcu başına mı, deneme süresi olacak mı?
+## 9. Faz 8: Faturalama (tamamlandı)
+Ödeme elden/IBAN alınacağı için gateway entegrasyonu yapılmadı. Bunun yerine
+panelde (Şirketler sayfası) her şirket için "Ödeme Güncel / Gecikmiş" durumu,
+son ödeme tarihi ve son vade tarihi tutuluyor. super_admin "Ödeme Alındı"
+butonuyla işaretliyor (vade otomatik +30 gün ileri atılıyor). Şirket
+"Gecikmiş" olarak işaretlenirse o şirketin company_admin/driver girişleri
+(login + refresh) otomatik olarak 402 ile reddedilir — super_admin
+kendi girişini her zaman yapabilir.
 
 ---
 *Bu dosya proje ilerledikçe güncellenir. Bir adımı bitirince işaretleyip bana "adım X tamam" demen yeterli — kalan entegrasyonu ben bağlarım.*

@@ -28,6 +28,13 @@ export default async function authRoutes(fastify) {
       return reply.unauthorized('E-posta veya şifre hatalı')
     }
 
+    if (user.role !== 'super_admin') {
+      const companyPaymentStatus = await authService.findCompanyPaymentStatus(user.company_id)
+      if (companyPaymentStatus === 'overdue') {
+        return reply.paymentRequired('Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin')
+      }
+    }
+
     const payload = { sub: user.id, role: user.role, companyId: user.company_id }
     const accessToken = fastify.jwt.sign(payload)
 
@@ -63,6 +70,10 @@ export default async function authRoutes(fastify) {
     const record = await authService.findRefreshToken(tokenHash)
     if (!record || !record.user_active) {
       return reply.unauthorized('Geçersiz veya süresi dolmuş refresh token')
+    }
+
+    if (record.role !== 'super_admin' && record.company_payment_status === 'overdue') {
+      return reply.paymentRequired('Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin')
     }
 
     // Token rotation: eskiyi sil, yenisini yaz

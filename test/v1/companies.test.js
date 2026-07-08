@@ -82,3 +82,63 @@ describe('POST /api/v1/companies/:id/admins', () => {
     expect(duplicate.statusCode).toBe(409)
   })
 })
+
+describe('PATCH /api/v1/companies/:id/payment-status', () => {
+  it('company_admin rolüyle 403 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/companies/00000000-0000-4000-8000-000000000001/payment-status',
+      headers: await authHeader('company_admin'),
+      payload: { paymentStatus: 'overdue' },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('olmayan şirket için 404 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/companies/00000000-0000-4000-8000-00000000dead/payment-status',
+      headers: await authHeader('super_admin'),
+      payload: { paymentStatus: 'overdue' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('overdue işaretler, sonra active ile son ödeme/vade tarihini günceller', async () => {
+    const app = await getTestApp()
+
+    const companyRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/companies',
+      headers: await authHeader('super_admin'),
+      payload: { name: 'Ödeme Test AŞ', slug: `pay-test-${Date.now()}` },
+    })
+    expect(companyRes.statusCode).toBe(201)
+    const company = companyRes.json()
+    created.companyId = company.id
+    expect(company.paymentStatus).toBe('active')
+
+    const overdueRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/companies/${company.id}/payment-status`,
+      headers: await authHeader('super_admin'),
+      payload: { paymentStatus: 'overdue' },
+    })
+    expect(overdueRes.statusCode).toBe(200)
+    expect(overdueRes.json().paymentStatus).toBe('overdue')
+
+    const activeRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/companies/${company.id}/payment-status`,
+      headers: await authHeader('super_admin'),
+      payload: { paymentStatus: 'active' },
+    })
+    expect(activeRes.statusCode).toBe(200)
+    const activated = activeRes.json()
+    expect(activated.paymentStatus).toBe('active')
+    expect(activated.lastPaymentDate).toBeTruthy()
+    expect(activated.nextDueDate).toBeTruthy()
+  })
+})
