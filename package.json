@@ -13,7 +13,7 @@
     "migrate:down": "node-pg-migrate down -m src/db/migrations",
     "migrate:create": "node-pg-migrate create -m src/db/migrations",
     "backup": "node scripts/backup.js",
-    "build:admin": "npm --prefix admin run build",
+    "build:admin": "npm --prefix admin ci && npm --prefix admin run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src test"

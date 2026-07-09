@@ -1,52 +1,39 @@
 # ShuttlePing — TODO / Proje Durumu
 
-Son güncelleme: 2026-07-06
+Son güncelleme: 2026-07-09
 
 ## Yapılanlar ✅
 
-### Faz 1 — Backend temeli (tamamlandı, DB doğrulaması bekliyor)
-- [x] Fastify + JWT auth (login / refresh rotation / logout)
-- [x] Migration 001 — companies, users, refresh_tokens
-- [x] Migration 002 — vehicles, routes, stops (sıralı, lat/lng), passengers (bildirim kanalı tercihi)
-- [x] Companies CRUD (super_admin)
-- [x] Users CRUD — company_admin kendi şirketinde driver/admin yönetir
-- [x] Vehicles CRUD (plaka unique, soft delete)
-- [x] Routes CRUD + nested stops + sürücü/araç ataması
-- [x] Passengers CRUD (durağa bağlı, telegram/sms kanal tercihi, notify_before_minutes)
-- [x] POST /api/v1/locations — sürücü konum gönderir → Redis (TTL 5 dk); GET ile admin son konumu okur
-- [x] Bildirim kanal soyutlaması — `src/services/notifications/` dispatcher + telegram/sms adapter (stub)
-- [x] 32 test (30 yeşil), lint temiz
-- [x] Bug fix: companies response'unda isActive/createdAt dönmüyordu; coerceTypes querystring filtrelerini bozuyordu; ESLint node globals eksikti
-- [x] `.env` oluşturuldu (dev secrets)
+Tüm geliştirme fazları kod tarafında tamamlandı — detaylı faz listesi için `CLAUDE.md`'ye bak.
 
-## Engel 🔴
-- [ ] **Docker Desktop kur** (Windows 11 Home → WSL2 backend zorunlu; gerekirse `wsl --update`)
-- [ ] Sonra: `docker-compose up -d` → `npm run migrate:up` → `npm test` (kalan 2 kırmızı test DB olmadığı için 500 dönüyor, kod hatası değil)
+- Faz 1 — Backend temeli: Fastify + JWT auth, migration'lar, multi-tenant CRUD (companies/users/vehicles/routes/stops/passengers)
+- Faz 2 — Android sürücü uygulaması: **iptal**, mobil app yapılmayacak (`public/driver.html` web istemcisi yeterli)
+- Faz 3 — ETA motoru: BullMQ worker, Distance Matrix + haversine fallback, dedup
+- Faz 4 — Bildirim servisi: Telegram Bot API + Netgsm SMS entegrasyonu (gerçek adapter'lar, stub değil)
+- Faz 5 — Admin panel: React (Türkçe UI)
+- Faz 6 — Canlı harita + SSE takip sayfası
+- Faz 7 — Sefer geçmişi + monitoring + pg_dump yedekleme
+- Faz 8 — Faturalama: manuel ödeme takibi (elden/IBAN, gateway yok)
 
-## Yapılacaklar 📋 (öncelik sırasıyla)
+75/75 test yeşil, lint temiz.
 
-### Faz 3 — ETA motoru
-- [ ] BullMQ worker: konum güncellemesi → Haversine ön filtre → durak yakınında tek Distance Matrix çağrısı + Redis cache (Google maliyetini 10-50x düşürür)
-- [ ] Yolcunun `notify_before_minutes` eşiği geçilince bildirim job'ı kuyruğa at
-- [ ] Aynı sefer içinde tekrar bildirim göndermeme (dedup) mantığı
+## Bu oturumda tamamlanan kurulum adımları (2026-07-09)
+- [x] Lokal dev ortamı: Docker kuruldu, `docker-compose up -d` + `npm run migrate:up` + `npm test` sorunsuz
+- [x] `.env` dosyası `.env.example` ile senkronize edildi (Faz 3/4 değişkenleri eksikti)
+- [x] Telegram bot oluşturuldu (`@ShuttlePingBot`), token doğrulandı ve `.env`'e yazıldı
+- [x] Google Maps Distance Matrix API key alındı, sadece bu API'ye kısıtlandı, `.env`'e yazıldı
+- [x] Prod JWT secret'ları üretildi (Railway kurulumunda kullanılacak, henüz oraya girilmedi)
+- [x] `build:admin` script'i düzeltildi — Railway build'inde admin bağımlılıklarını (`npm --prefix admin ci`) atlıyordu, artık build komutuna dahil
+- [x] Lokal uçtan uca test: super_admin → şirket → route/durak/araç/sürücü/yolcu → konum ingest → ETA hesaplama → **gerçek Telegram bildirimi başarıyla gönderildi** (`notification_logs`: `status: sent`)
 
-### Faz 4 — Bildirim entegrasyonları
-- [ ] Telegram Bot API gerçek entegrasyonu (`src/services/notifications/telegram.js` stub'ını doldur)
-- [ ] Netgsm SMS gerçek entegrasyonu (`sms.js` stub'ını doldur)
-- [ ] SMS içine canlı takip linki ekle
-
-### Faz 6 — Canlı harita (öne çekildi; satış stratejisinin parçası)
-- [ ] SSE endpoint — Redis'teki konumu yayınla (app de aynı endpoint'i kullanacak)
-- [ ] Tarayıcıda açılan takip sayfası (yolcu app kurmadan haritayı görür)
-
-### Sonrası
-- [ ] Faz 5 — React admin panel (Türkçe)
-- [ ] Faz 2 — Android sürücü uygulaması (foreground service + pil muafiyeti kritik)
-- [ ] Faz 7 — Sefer geçmişi + monitoring + pg_dump yedekleme
-- [ ] Faz 8 — Faturalama + Play Store; yolcu mobil app'i = notifications dispatcher'a `push` adapter'ı eklemek
+## Bekleyen adımlar 📋 (`docs/SENIN-ADIMLARIN.md`'de detaylı anlatım var)
+- [ ] **Netgsm SMS hesabı** — kullanıcı kararıyla en sona bırakıldı; başvuru onayı günler sürebileceği için erkenden başlatılması öneriliyor
+- [ ] **Railway kurulumu** — trial bitti, devam etmek için Hobby plan ($5/ay) + kart bağlama kararı kullanıcıda; karar verilince proje + Postgres + Redis + env değişkenleri + build/deploy ayarları yapılacak
+- [ ] Railway'e bağlı: ilk prod super_admin, ilk gerçek şirket kurulumu, prod yedekleme zamanlaması (Railway cron / GitHub Actions kararı)
+- [ ] (Opsiyonel iyileştirme fikri, henüz backlog'da) Telegram `/start` webhook'u — yolcu chat ID'sini `getUpdates` ile manuel çekmek yerine otomatik panele düşürmek
 
 ## Ürün / satış kararları 💡 (mutabık kalınan)
 - MVP: **SMS varsayılan + canlı takip linki + Telegram opsiyonu** — yolcuya app indirtme yok
 - Fiyatlama: yolcu başına aylık; SMS maliyeti fiyata gömülür (200 yolcu ≈ 8.800 SMS/ay)
-- Yolcu mobil app'i: ilk 3-5 müşteriden sonra, push adapter'ı olarak
+- Yolcu mobil app'i: ilk 3-5 müşteriden sonra, push adapter'ı olarak (bkz. Faz 8 notu, `notifications` dispatcher'a eklenecek)
 - Kurumsal satış öncesi KVKK dosyası (DPA + aydınlatma metni) hazırlanacak
