@@ -3,12 +3,26 @@ import { api } from '../api.js'
 
 const EMPTY_ADMIN = { companyId: '', fullName: '', email: '', password: '', phone: '' }
 
+// Kademeli askıya alma: overdue → yönetici girişi ve Google sorgusu kapanır,
+// sürücü ve bildirimler çalışır. suspended → her şey durur.
+const PAYMENT_LABEL = {
+  active: 'Ödeme Güncel',
+  overdue: 'Gecikmiş',
+  suspended: 'Askıda',
+}
+const PAYMENT_BADGE = {
+  active: 'badge-ok',
+  overdue: 'badge-warn',
+  suspended: 'badge-off',
+}
+
 export default function Companies() {
   const [companies, setCompanies] = useState([])
   const [form, setForm] = useState({ name: '', slug: '' })
   const [adminForm, setAdminForm] = useState(EMPTY_ADMIN)
   const [notice, setNotice] = useState(null)
   const [error, setError] = useState(null)
+  const [payments, setPayments] = useState(null)
 
   async function load() {
     try {
@@ -34,11 +48,58 @@ export default function Companies() {
     }
   }
 
-  async function markPaymentStatus(companyId, paymentStatus) {
+  async function markPaymentStatus(companyId, paymentStatus, extra = {}) {
     setError(null)
     try {
-      await api(`/companies/${companyId}/payment-status`, { method: 'PATCH', body: { paymentStatus } })
+      await api(`/companies/${companyId}/payment-status`, {
+        method: 'PATCH',
+        body: { paymentStatus, ...extra },
+      })
       await load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  /** Ödeme alındı: tutar ve not defterle birlikte kaydedilir (C4). */
+  async function recordPayment(company) {
+    const raw = window.prompt(`${company.name} — alınan tutar (TL, boş bırakılabilir)`)
+    if (raw === null) return // iptal
+    const amount = raw.trim() === '' ? undefined : Number(raw)
+    if (amount !== undefined && !Number.isFinite(amount)) {
+      return setError('Geçersiz tutar')
+    }
+    const note = window.prompt('Not (örn. IBAN havale / elden)') ?? undefined
+    await markPaymentStatus(company.id, 'active', { amount, note: note || undefined })
+  }
+
+  async function setQuota(company) {
+    const raw = window.prompt(
+      `${company.name} — azami aktif yolcu sayısı (boş = sınırsız)`,
+      company.maxPassengers ?? '',
+    )
+    if (raw === null) return
+    const value = raw.trim() === '' ? null : Number(raw)
+    if (value !== null && (!Number.isInteger(value) || value < 1)) {
+      return setError('Kota pozitif bir tam sayı olmalı')
+    }
+    setError(null)
+    try {
+      await api(`/companies/${company.id}`, {
+        method: 'PATCH',
+        body: { maxPassengers: value },
+      })
+      await load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function showPayments(company) {
+    setError(null)
+    try {
+      const { items } = await api(`/companies/${company.id}/payments`)
+      setPayments({ company, items })
     } catch (err) {
       setError(err.message)
     }
@@ -146,7 +207,7 @@ export default function Companies() {
             <th>Durum</th>
             <th>Ödeme</th>
             <th>Son Vade</th>
-            <th>Kayıt</th>
+            <th>Yolcu Kotası</th>
             <th></th>
           </tr>
         </thead>
@@ -161,24 +222,41 @@ export default function Companies() {
                 </span>
               </td>
               <td>
-                <span className={`badge ${c.paymentStatus === 'overdue' ? 'badge-off' : 'badge-ok'}`}>
-                  {c.paymentStatus === 'overdue' ? 'Gecikmiş' : 'Ödeme Güncel'}
+                <span className={`badge ${PAYMENT_BADGE[c.paymentStatus] ?? 'badge-off'}`}>
+                  {PAYMENT_LABEL[c.paymentStatus] ?? c.paymentStatus}
                 </span>
               </td>
               <td className="mono">
                 {c.nextDueDate ? new Date(c.nextDueDate).toLocaleDateString('tr-TR') : '—'}
               </td>
-              <td className="mono">{new Date(c.createdAt).toLocaleDateString('tr-TR')}</td>
-              <td>
-                {c.paymentStatus === 'overdue' ? (
-                  <button className="btn btn-primary" onClick={() => markPaymentStatus(c.id, 'active')}>
+              <td className="mono">
+                <button className="btn btn-ghost" onClick={() => setQuota(c)}>
+                  {c.maxPassengers ?? 'sınırsız'}
+                </button>
+              </td>
+              <td className="row-actions">
+                {c.paymentStatus !== 'active' && (
+                  <button className="btn btn-primary" onClick={() => recordPayment(c)}>
                     Ödeme Alındı
                   </button>
-                ) : (
+                )}
+                {c.paymentStatus === 'active' && (
                   <button className="btn btn-ghost" onClick={() => markPaymentStatus(c.id, 'overdue')}>
-                    Gecikti İşaretle
+                    Gecikti
                   </button>
                 )}
+                {c.paymentStatus === 'overdue' && (
+                  <button
+                    className="btn btn-ghost"
+                    title="Bildirimler ve konum takibi tamamen durur"
+                    onClick={() => markPaymentStatus(c.id, 'suspended')}
+                  >
+                    Askıya Al
+                  </button>
+                )}
+                <button className="btn btn-ghost" onClick={() => showPayments(c)}>
+                  Ödemeler
+                </button>
               </td>
             </tr>
           ))}
@@ -191,6 +269,50 @@ export default function Companies() {
           )}
         </tbody>
       </table>
+
+      {payments && (
+        <div className="card">
+          <div className="map-toolbar">
+            <h3>{payments.company.name} — Ödeme Geçmişi</h3>
+            <button className="btn btn-ghost" onClick={() => setPayments(null)}>
+              Kapat
+            </button>
+          </div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Tutar</th>
+                <th>Dönem</th>
+                <th>Kaydeden</th>
+                <th>Not</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.items.map((p) => (
+                <tr key={p.id}>
+                  <td className="mono">{new Date(p.paidAt).toLocaleString('tr-TR')}</td>
+                  <td className="mono">
+                    {p.amount == null ? '—' : `${Number(p.amount).toLocaleString('tr-TR')} ${p.currency}`}
+                  </td>
+                  <td className="mono">
+                    {p.periodEnd ? new Date(p.periodEnd).toLocaleDateString('tr-TR') : '—'}
+                  </td>
+                  <td>{p.recordedBy ?? '—'}</td>
+                  <td>{p.note ?? '—'}</td>
+                </tr>
+              ))}
+              {payments.items.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="muted">
+                    Kayıt yok
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

@@ -250,6 +250,17 @@ label {
   color: var(--off-text);
 }
 
+.badge-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 .muted {
   color: var(--muted);
 }
