@@ -10,6 +10,9 @@ import { logger } from '../utils/logger.js'
 
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000
 const BILLING_SWEEP_INTERVAL_MS = 60 * 60 * 1000
+const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000
+// Silme parça boyutu — büyük tabloyu tek işlemde kilitlememek için
+const RETENTION_BATCH_SIZE = 5_000
 
 /**
  * Belirtilen süredir ping gelmeyen aktif seferleri 'abandoned' işaretler ve
@@ -57,19 +60,70 @@ export async function sweepOverdueCompanies({ redis }) {
   return companies.length
 }
 
+/**
+ * Saklama süresi dolmuş kayıtları siler (E7).
+ *
+ * `location_history` her ping'de bir satır alıyor ve bugüne kadar hiç
+ * temizlenmiyordu: 50 sürücüde ~144k satır/gün, yılda ~52M. Konum ve bildirim
+ * kayıtları aynı zamanda kişisel veri — süresiz saklamanın KVKK karşılığı yok.
+ *
+ * Silme, tabloyu uzun süre kilitlememek için parçalar hâlinde yapılır.
+ */
+export async function sweepRetention({ db }) {
+  const deleted = { locations: 0, notifications: 0 }
+
+  const purge = async (table, column, days) => {
+    if (!days) return 0
+    let total = 0
+    for (;;) {
+      const { rowCount } = await db.query(
+        `DELETE FROM ${table}
+         WHERE ctid IN (
+           SELECT ctid FROM ${table}
+           WHERE ${column} < now() - ($1 || ' days')::interval
+           LIMIT ${RETENTION_BATCH_SIZE}
+         )`,
+        [String(days)],
+      )
+      total += rowCount
+      if (rowCount < RETENTION_BATCH_SIZE) break
+    }
+    return total
+  }
+
+  deleted.locations = await purge(
+    'location_history',
+    'recorded_at',
+    env.LOCATION_HISTORY_RETENTION_DAYS,
+  )
+  deleted.notifications = await purge(
+    'notification_logs',
+    'created_at',
+    env.NOTIFICATION_LOG_RETENTION_DAYS,
+  )
+
+  if (deleted.locations || deleted.notifications) {
+    logger.info(deleted, 'Saklama süresi dolan kayıtlar silindi')
+  }
+  return deleted
+}
+
 export function startMaintenance({ db, redis }) {
   const run = (name, fn) => () =>
     fn().catch((err) => logger.error({ err, sweep: name }, 'Bakım süpürmesi başarısız'))
 
   const trips = run('trips', () => sweepAbandonedTrips({ db, redis }))
   const billing = run('billing', () => sweepOverdueCompanies({ redis }))
+  const retention = run('retention', () => sweepRetention({ db }))
 
   trips()
   billing()
+  retention()
 
   const timers = [
     setInterval(trips, SWEEP_INTERVAL_MS),
     setInterval(billing, BILLING_SWEEP_INTERVAL_MS),
+    setInterval(retention, RETENTION_SWEEP_INTERVAL_MS),
   ]
   for (const timer of timers) timer.unref?.()
   return timers

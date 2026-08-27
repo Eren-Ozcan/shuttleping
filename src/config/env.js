@@ -22,6 +22,9 @@ export const env = {
 
   DATABASE_URL: process.env.DATABASE_URL,
   REDIS_URL: process.env.REDIS_URL,
+  // HTTP + ETA worker (5) + bildirim worker (10) aynı havuzu paylaşır
+  DB_POOL_MAX: Number(process.env.DB_POOL_MAX ?? 20),
+  DB_STATEMENT_TIMEOUT_MS: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 15_000),
 
   JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
@@ -43,6 +46,16 @@ export const env = {
   ETA_PASSED_RADIUS_METERS: Number(process.env.ETA_PASSED_RADIUS_METERS ?? 150),
   // Bu süredir ping gelmeyen aktif sefer "abandoned" işaretlenir (Faz A)
   TRIP_ABANDON_AFTER_MINUTES: Number(process.env.TRIP_ABANDON_AFTER_MINUTES ?? 20),
+
+  // Saklama süreleri (Faz E7) — 0 = sınırsız (temizlik yapılmaz).
+  // Konum ve bildirim kayıtları kişisel veri; süresiz saklama KVKK açısından
+  // savunulabilir değil.
+  LOCATION_HISTORY_RETENTION_DAYS: Number(
+    process.env.LOCATION_HISTORY_RETENTION_DAYS ?? 90,
+  ),
+  NOTIFICATION_LOG_RETENTION_DAYS: Number(
+    process.env.NOTIFICATION_LOG_RETENTION_DAYS ?? 365,
+  ),
 
   // Maliyet kontrolü (Faz B) — Google Routes API computeRouteMatrix
   // Bu dakikanın altındaki duraklar TRAFFIC_AWARE (Pro SKU, ~$10/1K) sorulur
