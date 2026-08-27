@@ -38,6 +38,20 @@ export const env = {
   // Bu süredir ping gelmeyen aktif sefer "abandoned" işaretlenir (Faz A)
   TRIP_ABANDON_AFTER_MINUTES: Number(process.env.TRIP_ABANDON_AFTER_MINUTES ?? 20),
 
+  // Maliyet kontrolü (Faz B) — Google Routes API computeRouteMatrix
+  // Bu dakikanın altındaki duraklar TRAFFIC_AWARE (Pro SKU, ~$10/1K) sorulur
+  ETA_TRAFFIC_AWARE_MINUTES: Number(process.env.ETA_TRAFFIC_AWARE_MINUTES ?? 15),
+  // Bunun üstündeki duraklar Google'a hiç sorulmaz (haversine yeterli)
+  ETA_GOOGLE_MAX_MINUTES: Number(process.env.ETA_GOOGLE_MAX_MINUTES ?? 30),
+  ETA_GOOGLE_MAX_DISTANCE_KM: Number(process.env.ETA_GOOGLE_MAX_DISTANCE_KM ?? 10),
+  // Günlük element tavanı — aşılırsa haversine'e düşülür + logger.error
+  GOOGLE_DAILY_ELEMENT_BUDGET: Number(process.env.GOOGLE_DAILY_ELEMENT_BUDGET ?? 5000),
+  // Google'a tekrar sorma aralığı: yakın durak varken sık, yokken seyrek
+  ETA_THROTTLE_NEAR_SECONDS: Number(process.env.ETA_THROTTLE_NEAR_SECONDS ?? 45),
+  ETA_THROTTLE_FAR_SECONDS: Number(process.env.ETA_THROTTLE_FAR_SECONDS ?? 300),
+  // Araç bu kadar hareket etmediyse önceki Google sonucu yeniden kullanılır
+  ETA_MIN_MOVE_METERS: Number(process.env.ETA_MIN_MOVE_METERS ?? 100),
+
   // Bildirim kanalları (Faz 4) — boş bırakılan kanal devre dışı kalır,
   // gönderim denemesi notification_logs'a 'failed' olarak düşer
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
