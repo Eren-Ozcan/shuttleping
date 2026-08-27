@@ -35,6 +35,19 @@ export function startWorkers() {
   return _workers
 }
 
+/**
+ * Worker canlılık durumu (F7).
+ * /health/deep eskiden iki worker da ölü olsa 200 dönüyordu — kuyruklar
+ * sessizce birikirken sağlık kontrolü yeşil kalıyordu.
+ */
+export function getWorkerHealth() {
+  if (!_workers.length) return { running: false, workers: [] }
+  return {
+    running: _workers.every((w) => w.isRunning()),
+    workers: _workers.map((w) => ({ name: w.name, running: w.isRunning() })),
+  }
+}
+
 export async function stopWorkers() {
   const workers = _workers
   _workers = []

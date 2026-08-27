@@ -58,6 +58,18 @@ export async function enqueueNotificationJob(data) {
   })
 }
 
+/**
+ * Kuyruk derinlikleri (F7). Worker'lar ayakta olsa da iş birikiyorsa
+ * /health/deep bunu göstermeli.
+ */
+export async function getQueueDepths() {
+  const [eta, notifications] = await Promise.all([
+    getEtaQueue().getJobCounts('waiting', 'active', 'failed'),
+    getNotificationQueue().getJobCounts('waiting', 'active', 'failed'),
+  ])
+  return { eta, notifications }
+}
+
 export async function closeQueues() {
   const etaQueue = _etaQueue
   const notificationQueue = _notificationQueue
