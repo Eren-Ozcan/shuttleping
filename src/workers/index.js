@@ -8,11 +8,13 @@ import { createQueueConnection } from '../queues/connection.js'
 import { closeQueues } from '../queues/index.js'
 import { createEtaWorker } from './eta.worker.js'
 import { createNotificationWorker } from './notification.worker.js'
+import { startMaintenance } from './maintenance.js'
 import { logger } from '../utils/logger.js'
 
 let _workers = []
 let _workerConnection = null // BullMQ worker bağlantısı
-let _serviceRedis = null // loc/eta/dedup anahtar okuma-yazması için
+let _serviceRedis = null // loc/eta anahtar okuma-yazması + bakım süpürmesi için
+let _maintenanceTimer = null
 
 export function startWorkers() {
   if (_workers.length) return _workers
@@ -23,14 +25,17 @@ export function startWorkers() {
     createEtaWorker({ db: pool, redis: _serviceRedis, connection: _workerConnection }),
     createNotificationWorker({ db: pool, connection: _workerConnection }),
   ]
+  _maintenanceTimer = startMaintenance({ db: pool, redis: _serviceRedis })
 
-  logger.info('Kuyruk worker\'ları başlatıldı (eta, notifications)')
+  logger.info('Kuyruk worker\'ları başlatıldı (eta, notifications, maintenance)')
   return _workers
 }
 
 export async function stopWorkers() {
   const workers = _workers
   _workers = []
+  if (_maintenanceTimer) clearInterval(_maintenanceTimer)
+  _maintenanceTimer = null
   await Promise.all(workers.map((worker) => worker.close()))
   await closeQueues()
 

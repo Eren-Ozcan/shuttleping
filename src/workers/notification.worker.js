@@ -19,17 +19,24 @@ export async function handleNotificationJob({ db }, data) {
   const passenger = rows[0]
   if (!passenger) return { skipped: 'passenger_not_found' }
 
+  // Job payload'ından gelen company_id'ye güvenme — yolcunun gerçek tenant'ıyla
+  // eşleşmiyorsa bozuk/replay job'dır, loga yanlış tenant yazma
+  if (passenger.company_id !== data.companyId) {
+    return { skipped: 'company_mismatch' }
+  }
+
   const message = buildApproachMessage(data)
   const result = await notify(passenger, message)
 
   await db.query(
     `INSERT INTO notification_logs
-       (company_id, passenger_id, route_id, stop_id, channel, message, status, error)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       (company_id, passenger_id, route_id, trip_id, stop_id, channel, message, status, error)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
-      data.companyId,
+      passenger.company_id,
       passenger.id,
       data.routeId,
+      data.tripId ?? null,
       data.stopId,
       passenger.notification_channel,
       message,
