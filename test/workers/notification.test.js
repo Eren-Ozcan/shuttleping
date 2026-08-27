@@ -40,6 +40,7 @@ describe('handleNotificationJob', () => {
   it('kalıcı hata (chat id eksik) retry edilmez, failed olarak loglanır', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
+      company_id: jobData.companyId,
       notification_channel: 'telegram',
       telegram_chat_id: null,
     })
@@ -57,9 +58,22 @@ describe('handleNotificationJob', () => {
     expect(insert.params.some((p) => typeof p === 'string' && p.includes('Meydan'))).toBe(true)
   })
 
+  it('yolcunun tenant\'ı job payload\'ıyla uyuşmazsa atlar (replay koruması)', async () => {
+    const db = fakeDb({
+      id: jobData.passengerId,
+      company_id: '00000000-0000-4000-8000-0000000000ff',
+      notification_channel: 'telegram',
+      telegram_chat_id: '123',
+    })
+    const result = await handleNotificationJob({ db }, jobData)
+    expect(result).toEqual({ skipped: 'company_mismatch' })
+    expect(db.queries).toHaveLength(1) // sadece SELECT, log yazılmaz
+  })
+
   it('bilinmeyen kanal kalıcı hatadır, throw etmez', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
+      company_id: jobData.companyId,
       notification_channel: 'posta_guvercini',
     })
 

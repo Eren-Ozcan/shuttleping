@@ -2,6 +2,9 @@
  * ETA çekirdeği entegrasyon testi — gerçek PostgreSQL + Redis kullanır,
  * getEta ve enqueueNotification sahte geçilir. Test verisi benzersiz slug
  * ile oluşturulur ve sonunda fiziksel silinir (test DB'si olduğu için).
+ *
+ * Faz A: dedup artık trip_notifications tablosuyla; her sefer bir trips satırı,
+ * durak durumu trip_stops.state.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { getTestApp, closeTestApp } from '../helpers/app.js'
@@ -25,6 +28,14 @@ beforeAll(async () => {
   )
   ids.routeId = route.rows[0].id
 
+  const driver = await app.db.query(
+    `INSERT INTO users (company_id, email, password_hash, role, full_name)
+     VALUES ($1, 'eta-driver-' || uuid_generate_v4() || '@t.local', 'x', 'driver', 'Sürücü')
+     RETURNING id`,
+    [ids.companyId],
+  )
+  ids.driverId = driver.rows[0].id
+
   const stop = await app.db.query(
     `INSERT INTO stops (company_id, route_id, name, lat, lng, sequence)
      VALUES ($1, $2, 'Meydan', 40.99, 29.02, 1) RETURNING id`,
@@ -38,6 +49,17 @@ beforeAll(async () => {
     [ids.companyId, ids.stopId],
   )
   ids.passengerId = passenger.rows[0].id
+
+  const trip = await app.db.query(
+    `INSERT INTO trips (company_id, route_id, driver_id) VALUES ($1, $2, $3) RETURNING id`,
+    [ids.companyId, ids.routeId, ids.driverId],
+  )
+  ids.tripId = trip.rows[0].id
+  await app.db.query(
+    `INSERT INTO trip_stops (company_id, trip_id, stop_id, sequence)
+     VALUES ($1, $2, $3, 1)`,
+    [ids.companyId, ids.tripId, ids.stopId],
+  )
 })
 
 afterAll(async () => {
@@ -45,11 +67,14 @@ afterAll(async () => {
     await app.redis.del(
       locationKey(ids.companyId, ids.routeId),
       etaKey(ids.companyId, ids.routeId),
-      `notified:${ids.routeId}:${ids.stopId}:${ids.passengerId}`,
     )
+    await app.db.query('DELETE FROM trip_notifications WHERE trip_id = $1', [ids.tripId])
+    await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [ids.tripId])
+    await app.db.query('DELETE FROM trips WHERE id = $1', [ids.tripId])
     await app.db.query('DELETE FROM passengers WHERE id = $1', [ids.passengerId])
     await app.db.query('DELETE FROM stops WHERE id = $1', [ids.stopId])
     await app.db.query('DELETE FROM routes WHERE id = $1', [ids.routeId])
+    await app.db.query('DELETE FROM users WHERE id = $1', [ids.driverId])
     await app.db.query('DELETE FROM companies WHERE id = $1', [ids.companyId])
   }
   await closeTestApp()
@@ -65,19 +90,23 @@ function deps(overrides = {}) {
   }
 }
 
+const target = () => ({
+  companyId: ids.companyId,
+  routeId: ids.routeId,
+  tripId: ids.tripId,
+})
+
 describe('computeEtaForRoute', () => {
   it('Redis\'te konum yoksa işi atlar', async () => {
-    const result = await computeEtaForRoute(deps(), {
-      companyId: ids.companyId,
-      routeId: ids.routeId,
-    })
+    const result = await computeEtaForRoute(deps(), target())
     expect(result).toEqual({ skipped: 'no_location' })
   })
 
   it('eşiğin altındaki ETA için bildirim kuyruğa atılır ve ETA Redis\'e yazılır', async () => {
+    // Durağın "geçilmiş" sayılmaması için konum durağa uzak olsun
     await app.redis.set(
       locationKey(ids.companyId, ids.routeId),
-      JSON.stringify({ lat: 41.0, lng: 29.0, ts: Date.now() }),
+      JSON.stringify({ lat: 41.2, lng: 29.2, ts: Date.now() }),
       'EX',
       60,
     )
@@ -85,7 +114,7 @@ describe('computeEtaForRoute', () => {
     const enqueued = []
     const result = await computeEtaForRoute(
       deps({ enqueueNotification: async (job) => enqueued.push(job) }),
-      { companyId: ids.companyId, routeId: ids.routeId },
+      target(),
     )
 
     expect(result).toMatchObject({ ok: true, stopCount: 1, notified: 1 })
@@ -95,28 +124,74 @@ describe('computeEtaForRoute', () => {
       stopId: ids.stopId,
       stopName: 'Meydan',
       etaMinutes: 5,
+      tripId: ids.tripId,
     })
 
-    const etaRaw = await app.redis.get(etaKey(ids.companyId, ids.routeId))
-    const eta = JSON.parse(etaRaw)
+    const eta = JSON.parse(await app.redis.get(etaKey(ids.companyId, ids.routeId)))
     expect(eta.stops).toHaveLength(1)
     expect(eta.stops[0]).toMatchObject({ stopId: ids.stopId, etaSeconds: 300 })
+
+    const ts = await app.db.query(
+      'SELECT state FROM trip_stops WHERE trip_id = $1 AND stop_id = $2',
+      [ids.tripId, ids.stopId],
+    )
+    expect(ts.rows[0].state).toBe('notified')
   })
 
-  it('aynı yaklaşma için ikinci kez bildirim göndermez (dedup)', async () => {
+  it('aynı sefer + yolcu için ikinci kez bildirim göndermez (dedup)', async () => {
     const enqueued = []
     const result = await computeEtaForRoute(
       deps({ enqueueNotification: async (job) => enqueued.push(job) }),
-      { companyId: ids.companyId, routeId: ids.routeId },
+      target(),
     )
 
     expect(result).toMatchObject({ ok: true, notified: 0 })
     expect(enqueued).toHaveLength(0)
   })
 
+  it('yeni sefer açılınca aynı yolcuya tekrar bildirim gider', async () => {
+    // Route başına tek aktif sefer — önceki testin seferini kapat
+    await app.db.query(
+      `UPDATE trips SET status = 'completed' WHERE route_id = $1 AND status = 'active'`,
+      [ids.routeId],
+    )
+    const trip2 = await app.db.query(
+      `INSERT INTO trips (company_id, route_id, driver_id) VALUES ($1, $2, $3) RETURNING id`,
+      [ids.companyId, ids.routeId, ids.driverId],
+    )
+    const trip2Id = trip2.rows[0].id
+    await app.db.query(
+      `INSERT INTO trip_stops (company_id, trip_id, stop_id, sequence) VALUES ($1, $2, $3, 1)`,
+      [ids.companyId, trip2Id, ids.stopId],
+    )
+
+    const enqueued = []
+    const result = await computeEtaForRoute(
+      deps({ enqueueNotification: async (job) => enqueued.push(job) }),
+      { companyId: ids.companyId, routeId: ids.routeId, tripId: trip2Id },
+    )
+    expect(result).toMatchObject({ ok: true, notified: 1 })
+    expect(enqueued).toHaveLength(1)
+
+    await app.db.query('DELETE FROM trip_notifications WHERE trip_id = $1', [trip2Id])
+    await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [trip2Id])
+    await app.db.query('DELETE FROM trips WHERE id = $1', [trip2Id])
+  })
+
   it('ETA eşiğin üstündeyse bildirim gitmez', async () => {
-    // dedup anahtarını temizle ki eşik kontrolü test edilsin
-    await app.redis.del(`notified:${ids.routeId}:${ids.stopId}:${ids.passengerId}`)
+    await app.db.query(
+      `UPDATE trips SET status = 'completed' WHERE route_id = $1 AND status = 'active'`,
+      [ids.routeId],
+    )
+    const trip3 = await app.db.query(
+      `INSERT INTO trips (company_id, route_id, driver_id) VALUES ($1, $2, $3) RETURNING id`,
+      [ids.companyId, ids.routeId, ids.driverId],
+    )
+    const trip3Id = trip3.rows[0].id
+    await app.db.query(
+      `INSERT INTO trip_stops (company_id, trip_id, stop_id, sequence) VALUES ($1, $2, $3, 1)`,
+      [ids.companyId, trip3Id, ids.stopId],
+    )
 
     const enqueued = []
     const result = await computeEtaForRoute(
@@ -124,10 +199,13 @@ describe('computeEtaForRoute', () => {
         getEta: async () => [1800], // 30 dk > 10 dk eşik
         enqueueNotification: async (job) => enqueued.push(job),
       }),
-      { companyId: ids.companyId, routeId: ids.routeId },
+      { companyId: ids.companyId, routeId: ids.routeId, tripId: trip3Id },
     )
 
     expect(result).toMatchObject({ ok: true, notified: 0 })
     expect(enqueued).toHaveLength(0)
+
+    await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [trip3Id])
+    await app.db.query('DELETE FROM trips WHERE id = $1', [trip3Id])
   })
 })
