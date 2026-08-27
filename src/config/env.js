@@ -2,17 +2,59 @@ import { config } from 'dotenv'
 
 config()
 
-const required = [
-  'DATABASE_URL',
-  'REDIS_URL',
-  'JWT_ACCESS_SECRET',
-  'JWT_REFRESH_SECRET',
-]
+/**
+ * Ortam değişkeni doğrulaması (F8).
+ *
+ * JWT_REFRESH_SECRET burada zorunlu tutuluyordu ama hiçbir yerde
+ * kullanılmıyor: refresh token'lar opak rastgele + SHA-256. Zorunlu ama
+ * etkisiz bir sır, kurulum dokümanını yanıltıyordu — kaldırıldı.
+ *
+ * Üretimde ek kontroller var: CORS_ORIGIN sessizce localhost'a düşerse
+ * panel çalışmaz ve kimlikli bir CORS politikası localhost'u işaret eder.
+ */
+const REQUIRED = ['DATABASE_URL', 'REDIS_URL', 'JWT_ACCESS_SECRET']
+const REQUIRED_IN_PROD = ['CORS_ORIGIN']
+const MIN_SECRET_LENGTH = 32
 
-for (const key of required) {
-  if (!process.env[key]) {
-    throw new Error(`Eksik zorunlu ortam değişkeni: ${key}`)
+const problems = []
+const isProd = process.env.NODE_ENV === 'production'
+
+for (const key of [...REQUIRED, ...(isProd ? REQUIRED_IN_PROD : [])]) {
+  if (!process.env[key]) problems.push(`Eksik zorunlu ortam değişkeni: ${key}`)
+}
+
+if (
+  process.env.JWT_ACCESS_SECRET &&
+  process.env.JWT_ACCESS_SECRET.length < MIN_SECRET_LENGTH
+) {
+  problems.push(`JWT_ACCESS_SECRET en az ${MIN_SECRET_LENGTH} karakter olmalı`)
+}
+
+if (isProd) {
+  if (process.env.CORS_ORIGIN === '*') {
+    // credentials: true ile birlikte '*' geçersiz ve tehlikeli
+    problems.push("CORS_ORIGIN '*' olamaz — kimlikli istekler için tam origin gerekir")
   }
+  if (process.env.CORS_ORIGIN?.includes('localhost')) {
+    problems.push('CORS_ORIGIN üretimde localhost olamaz')
+  }
+  if (/change_me|test_|example/i.test(process.env.JWT_ACCESS_SECRET ?? '')) {
+    problems.push('JWT_ACCESS_SECRET örnek/varsayılan değer içeriyor')
+  }
+}
+
+if (problems.length) {
+  throw new Error(`Ortam yapılandırması geçersiz:\n  - ${problems.join('\n  - ')}`)
+}
+
+/** '7d' / '15m' / '30s' → milisaniye. */
+function parseDuration(value) {
+  const match = /^(\d+)\s*(ms|s|m|h|d)$/.exec(String(value).trim())
+  if (!match) {
+    throw new Error(`Geçersiz süre biçimi: ${value} (örn. 7d, 15m, 30s)`)
+  }
+  const units = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }
+  return Number(match[1]) * units[match[2]]
 }
 
 export const env = {
@@ -27,9 +69,12 @@ export const env = {
   DB_STATEMENT_TIMEOUT_MS: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 15_000),
 
   JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
-  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+  // JWT_REFRESH_SECRET yok: refresh token'lar JWT değil, opak rastgele
+  // değerlerdir ve DB'de SHA-256 hash'i saklanır (bkz. auth.service.js)
   JWT_ACCESS_EXPIRES: process.env.JWT_ACCESS_EXPIRES ?? '15m',
-  JWT_REFRESH_EXPIRES: process.env.JWT_REFRESH_EXPIRES ?? '7d',
+  // Refresh token ömrü. Eskiden auth route'unda sabit kodluydu ve bu değişken
+  // hiç okunmuyordu — değiştirmek hiçbir işe yaramıyordu (D7).
+  JWT_REFRESH_EXPIRES_MS: parseDuration(process.env.JWT_REFRESH_EXPIRES ?? '7d'),
 
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
