@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { api, getToken } from '../api.js'
+import { api, getStreamTicket } from '../api.js'
 
 export default function LiveMap() {
   const mapRef = useRef(null)
@@ -9,6 +9,8 @@ export default function LiveMap() {
   const busMarker = useRef(null)
   const stopLayer = useRef(null)
   const eventSource = useRef(null)
+  const reconnectTimer = useRef(null)
+  const routeIdRef = useRef('')
 
   const [routes, setRoutes] = useState([])
   const [routeId, setRouteId] = useState('')
@@ -31,6 +33,7 @@ export default function LiveMap() {
     mapInstance.current = map
 
     return () => {
+      clearTimeout(reconnectTimer.current)
       eventSource.current?.close()
       map.remove()
       mapInstance.current = null
@@ -39,8 +42,10 @@ export default function LiveMap() {
 
   async function watchRoute(id) {
     setRouteId(id)
+    routeIdRef.current = id
     setEta(null)
     setError(null)
+    clearTimeout(reconnectTimer.current)
     eventSource.current?.close()
     busMarker.current?.remove()
     busMarker.current = null
@@ -71,8 +76,32 @@ export default function LiveMap() {
 
     // SSE akışına bağlan
     setStatus('Araç konumu bekleniyor…')
-    const es = new EventSource(`/api/v1/locations/${id}/stream?token=${getToken()}`)
+    await connectStream(id)
+  }
+
+  /**
+   * Akışı tek kullanımlık biletle açar. Bilet 60 sn ömürlü olduğu için
+   * EventSource'un kendi yeniden bağlanması işe yaramaz — bağlantı koptuğunda
+   * yeni bilet alıp yeniden abone oluruz. Eskiden akış 15 dk sonra sessizce
+   * ölüyor ve "yeniden deneniyor" yazısında sonsuza kadar kalıyordu (E9).
+   */
+  async function connectStream(id, attempt = 0) {
+    if (routeIdRef.current !== id) return // kullanıcı bu arada güzergah değiştirdi
+
+    let ticket
+    try {
+      ticket = await getStreamTicket(id)
+    } catch (err) {
+      setStatus(`Akış açılamadı: ${err.message}`)
+      return scheduleReconnect(id, attempt + 1)
+    }
+
+    const es = new EventSource(`/api/v1/locations/${id}/stream?ticket=${ticket}`)
     eventSource.current = es
+
+    es.onopen = () => {
+      attempt = 0
+    }
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data)
@@ -96,7 +125,19 @@ export default function LiveMap() {
       }
       setEta(data.eta)
     }
-    es.onerror = () => setStatus('Bağlantı koptu — yeniden deneniyor…')
+
+    es.onerror = () => {
+      es.close()
+      setStatus('Bağlantı koptu — yeniden bağlanılıyor…')
+      scheduleReconnect(id, attempt + 1)
+    }
+  }
+
+  function scheduleReconnect(id, attempt) {
+    clearTimeout(reconnectTimer.current)
+    // Üstel geri çekilme, 30 sn tavanla
+    const delay = Math.min(2_000 * 2 ** Math.min(attempt, 4), 30_000)
+    reconnectTimer.current = setTimeout(() => connectStream(id, attempt), delay)
   }
 
   return (

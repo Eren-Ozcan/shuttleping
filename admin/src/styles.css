@@ -329,6 +329,13 @@ label {
   border: 1px solid var(--border);
 }
 
+.app-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--muted);
+}
+
 .eta-panel {
   position: absolute;
   top: 12px;

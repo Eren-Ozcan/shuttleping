@@ -1,34 +1,34 @@
 /**
  * API istemcisi: access token yönetimi + 401'de otomatik refresh.
- * Refresh token HttpOnly cookie'de (path=/api/v1/auth) — JS erişemez,
- * credentials: 'include' ile taşınır.
+ *
+ * Access token ve kullanıcı bilgisi YALNIZCA bellekte tutulur (D6) —
+ * localStorage'a yazılsaydı enjekte edilen herhangi bir script okuyabilirdi.
+ * Sayfa yenilendiğinde oturum, HttpOnly refresh cookie'siyle
+ * (path=/api/v1/auth, JS erişemez) `ensureSession()` üzerinden yeniden kurulur.
  */
 const API = '/api/v1'
 
-let accessToken = localStorage.getItem('accessToken')
+let accessToken = null
+let currentUser = null
+let bootstrapPromise = null
 
 export function getToken() {
   return accessToken
 }
 
 export function getUser() {
-  try {
-    return JSON.parse(localStorage.getItem('user'))
-  } catch {
-    return null
-  }
+  return currentUser
 }
 
 function setSession(token, user) {
   accessToken = token
-  localStorage.setItem('accessToken', token)
-  if (user) localStorage.setItem('user', JSON.stringify(user))
+  if (user) currentUser = user
 }
 
 export function clearSession() {
   accessToken = null
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('user')
+  currentUser = null
+  bootstrapPromise = null
 }
 
 async function tryRefresh() {
@@ -38,8 +38,21 @@ async function tryRefresh() {
   })
   if (!res.ok) return false
   const body = await res.json()
-  setSession(body.accessToken)
+  setSession(body.accessToken, body.user)
   return true
+}
+
+/**
+ * Uygulama açılışında bir kez çağrılır: refresh cookie varsa oturumu kurar.
+ * Aynı anda birden fazla çağrı gelirse tek istek paylaşılır.
+ * @returns {Promise<object|null>} oturum açık kullanıcı ya da null
+ */
+export function ensureSession() {
+  if (accessToken) return Promise.resolve(currentUser)
+  bootstrapPromise ??= tryRefresh()
+    .then((ok) => (ok ? currentUser : null))
+    .catch(() => null)
+  return bootstrapPromise
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
@@ -88,4 +101,13 @@ export async function logout() {
   } finally {
     clearSession()
   }
+}
+
+/**
+ * Canlı harita akışı için tek kullanımlık bilet alır (D2).
+ * Access token URL'e girmez; bilet 60 sn geçerlidir ve bir kez kullanılır.
+ */
+export async function getStreamTicket(routeId) {
+  const { ticket } = await api(`/locations/${routeId}/stream-ticket`, { method: 'POST' })
+  return ticket
 }

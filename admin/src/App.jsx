@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { getUser } from './api.js'
+import { ensureSession, getUser } from './api.js'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import RoutesPage from './pages/RoutesPage.jsx'
@@ -16,6 +17,17 @@ function RequireAuth({ children }) {
 }
 
 export default function App() {
+  // Access token bellekte tutulduğu için sayfa yenilendiğinde oturum refresh
+  // cookie'siyle yeniden kurulur; o tamamlanmadan yönlendirme yapılmamalı,
+  // aksi halde geçerli oturum login'e atılır.
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    ensureSession().finally(() => setReady(true))
+  }, [])
+
+  if (!ready) return <div className="app-loading">Yükleniyor…</div>
+
   const user = getUser()
   const home = user?.role === 'super_admin' ? '/sirketler' : '/guzergahlar'
 
