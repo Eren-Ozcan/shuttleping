@@ -26,6 +26,16 @@ Tüm geliştirme fazları kod tarafında tamamlandı — detaylı faz listesi i�
 - [x] `build:admin` script'i düzeltildi — Railway build'inde admin bağımlılıklarını (`npm --prefix admin ci`) atlıyordu, artık build komutuna dahil
 - [x] Lokal uçtan uca test: super_admin → şirket → route/durak/araç/sürücü/yolcu → konum ingest → ETA hesaplama → **gerçek Telegram bildirimi başarıyla gönderildi** (`notification_logs`: `status: sent`)
 
+## Pilot öncesi kritik bulgular 🔴 (2026-08-27 kod incelemesi — detay: `docs/PILOT-READINESS.md`)
+- [ ] **K-1: Her konum sinyali Google'a fatura yazıyor** — 10 sn'lik ping başına tüm duraklara trafikli Distance Matrix sorgusu; kısma/önbellek/geçilen durak elemesi yok. 3 güzergahlık 1 haftalık pilot ≈ $864, trial kredisini bitirir
+- [ ] **K-2: Sürücü 15 dakika sonra yayından düşüyor** — `driver.html` `/auth/refresh` çağırmıyor, 401'de yayını durduruyor; servis hattı 45-60 dk sürüyor
+- [ ] **K-3: Telefon kilitlenince konum akışı susuyor** — Wake Lock yok, sekme arka plana düşünce `watchPosition` askıya alınıyor
+- [ ] R-1: Dedup 45 dk — aynı demo/sefer ikinci kez bildirim üretmiyor, test ve sunum tekrarını engelliyor
+- [ ] R-2: Dry-run modu yok — test yapmak gerçek yolcuya gerçek mesaj göndermek demek
+- [ ] R-3: `/auth/login`'de hız sınırı yok (`@fastify/rate-limit` kayıtlı değil)
+- [ ] R-4: SSE access token'ı `?token=` ile taşınıyor, erişim loglarına düşüyor
+- [ ] R-5: Sürücü güzergahı `rows[0]` ile kararsız seçiliyor; `super_admin` canlı haritayı açamıyor; bildirim metninde şirket adı/takip linki yok; yolcuya açık takip sayfası hiç yok
+
 ## Bekleyen adımlar 📋 (`docs/SENIN-ADIMLARIN.md`'de detaylı anlatım var)
 - [ ] **Netgsm SMS hesabı** — kullanıcı kararıyla en sona bırakıldı; başvuru onayı günler sürebileceği için erkenden başlatılması öneriliyor
 - [ ] **Railway kurulumu** — trial bitti, devam etmek için Hobby plan ($5/ay) + kart bağlama kararı kullanıcıda; karar verilince proje + Postgres + Redis + env değişkenleri + build/deploy ayarları yapılacak
