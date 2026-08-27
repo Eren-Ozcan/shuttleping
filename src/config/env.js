@@ -33,7 +33,10 @@ export const env = {
   // ETA motoru (Faz 3) — anahtar yoksa haversine fallback kullanılır
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? null,
   ETA_FALLBACK_SPEED_KMH: Number(process.env.ETA_FALLBACK_SPEED_KMH ?? 25),
-  ETA_DEDUP_TTL_SECONDS: Number(process.env.ETA_DEDUP_TTL_SECONDS ?? 2700),
+  // Araç bu yarıçapa girince durak "geçilmiş" sayılır (Faz A)
+  ETA_PASSED_RADIUS_METERS: Number(process.env.ETA_PASSED_RADIUS_METERS ?? 150),
+  // Bu süredir ping gelmeyen aktif sefer "abandoned" işaretlenir (Faz A)
+  TRIP_ABANDON_AFTER_MINUTES: Number(process.env.TRIP_ABANDON_AFTER_MINUTES ?? 20),
 
   // Bildirim kanalları (Faz 4) — boş bırakılan kanal devre dışı kalır,
   // gönderim denemesi notification_logs'a 'failed' olarak düşer
