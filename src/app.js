@@ -22,7 +22,8 @@ import tripRoutes from './routes/v1/trips/index.js'
 import historyRoutes from './routes/v1/history/index.js'
 import { budgetKey } from './services/eta/distance.js'
 import { EmptyUpdateError } from './utils/sql.js'
-import { closeQueues } from './queues/index.js'
+import { getWorkerHealth } from './workers/index.js'
+import { closeQueues, getQueueDepths } from './queues/index.js'
 
 /**
  * @param {object} opts - Fastify seçeneklerini override etmek için (test'te logger: false)
@@ -40,8 +41,32 @@ export async function buildApp(opts = {}) {
     },
   })
 
-  // Güvenlik başlıkları
-  await fastify.register(helmet, { contentSecurityPolicy: false })
+  // Güvenlik başlıkları.
+  //
+  // CSP eskiden tamamen kapalıydı (D5): panel ve driver.html oturum
+  // cookie'sini taşıyan origin'den servis edilirken XSS'in birincil savunması
+  // yoktu. Politika bu iki istemcinin gerçek ihtiyacına göre dar tutulur.
+  await fastify.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // Leaflet marker/tile'ları data: ve OSM host'undan gelir
+        imgSrc: ["'self'", 'data:', 'https://*.tile.openstreetmap.org'],
+        // Leaflet ve driver.html stilleri element'e inline yazıyor
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        // Yerel geliştirme http üzerinden çalışır; helmet'in varsayılan
+        // upgrade-insecure-requests direktifi orada isteği https'e çevirip kırar
+        upgradeInsecureRequests: env.isProd ? [] : null,
+      },
+    },
+  })
   await fastify.register(cors, { origin: env.CORS_ORIGIN, credentials: true })
   await fastify.register(sensible)
 
@@ -102,6 +127,14 @@ export async function buildApp(opts = {}) {
       checks.redis = 'down'
     }
 
+    // Worker canlılığı (F7): worker'lar ölürse konum ping'leri kabul edilmeye
+    // devam eder ama ETA hesaplanmaz ve bildirim gitmez — sessiz bir arıza
+    const workerHealth = getWorkerHealth()
+    // Test/CI'da worker başlatılmaz; yalnızca çalışması beklenen ortamda bak
+    if (workerHealth.workers.length) {
+      checks.workers = workerHealth.running ? 'ok' : 'down'
+    }
+
     // Google Maps günlük element kullanımı — bütçe aşıldıysa ETA kaba tahmine
     // düşmüştür; servis ayakta olduğu için 503 değil, bayrak olarak raporlanır
     let maps
@@ -114,9 +147,20 @@ export async function buildApp(opts = {}) {
       }
     }
 
+    // Kuyruk derinliği: worker'lar ayakta ama iş birikmişse de görünsün
+    let queues
+    if (checks.redis === 'ok' && workerHealth.workers.length) {
+      queues = await getQueueDepths().catch(() => undefined)
+    }
+
     const healthy = Object.values(checks).every((s) => s === 'ok')
     reply.code(healthy ? 200 : 503)
-    return { status: healthy ? 'ok' : 'degraded', ...checks, ...(maps ? { maps } : {}) }
+    return {
+      status: healthy ? 'ok' : 'degraded',
+      ...checks,
+      ...(queues ? { queues } : {}),
+      ...(maps ? { maps } : {}),
+    }
   })
 
   // Statik dosyalar: public/driver.html (sürücü istemcisi) ve
