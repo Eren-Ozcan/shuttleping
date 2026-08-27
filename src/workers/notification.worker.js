@@ -2,6 +2,7 @@ import { Worker } from 'bullmq'
 import { NOTIFICATION_QUEUE } from '../queues/index.js'
 import { notify } from '../services/notifications/index.js'
 import { buildApproachMessage } from '../services/notifications/message.js'
+import { getCompanyAccess, canNotify } from '../services/billing.service.js'
 import { logger } from '../utils/logger.js'
 
 /**
@@ -11,7 +12,10 @@ import { logger } from '../utils/logger.js'
  * edilmez — sadece log'a yazılır. Geçici hatalarda (retryable) throw edilir,
  * BullMQ backoff ile yeniden dener.
  */
-export async function handleNotificationJob({ db }, data) {
+export async function handleNotificationJob(
+  { db, redis, checkAccess = getCompanyAccess },
+  data,
+) {
   const { rows } = await db.query(
     'SELECT * FROM passengers WHERE id = $1 AND is_active = true',
     [data.passengerId],
@@ -24,6 +28,12 @@ export async function handleNotificationJob({ db }, data) {
   if (passenger.company_id !== data.companyId) {
     return { skipped: 'company_mismatch' }
   }
+
+  // Faturalama kapısı (C1): job kuyruğa girdikten sonra şirket askıya
+  // alınmış olabilir — gönderim anında tekrar bakılır, aksi halde ödemeyen
+  // müşteri için SMS maliyeti ödenmeye devam eder
+  const access = await checkAccess(passenger.company_id, redis)
+  if (!canNotify(access)) return { skipped: 'billing_blocked' }
 
   const message = buildApproachMessage(data)
   const result = await notify(passenger, message)
@@ -51,10 +61,10 @@ export async function handleNotificationJob({ db }, data) {
   return result
 }
 
-export function createNotificationWorker({ db, connection }) {
+export function createNotificationWorker({ db, redis, connection }) {
   const worker = new Worker(
     NOTIFICATION_QUEUE,
-    (job) => handleNotificationJob({ db }, job.data),
+    (job) => handleNotificationJob({ db, redis }, job.data),
     { connection, concurrency: 10 },
   )
 

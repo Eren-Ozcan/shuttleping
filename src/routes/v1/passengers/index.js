@@ -4,6 +4,7 @@ import {
   updatePassengerSchema,
 } from './schema.js'
 import { buildUpdate } from '../../../utils/sql.js'
+import { checkPassengerQuota } from '../../../services/billing.service.js'
 
 const PASSENGER_COLS = [
   'id',
@@ -83,6 +84,14 @@ export default async function passengerRoutes(fastify) {
 
       if (!(await stopBelongsToCompany(stopId, companyId))) {
         return reply.badRequest('Durak bulunamadı')
+      }
+
+      // Yolcu kotası (C6) — fiyatlandırma yolcu başına, tek anlamlı sınır bu
+      const quota = await checkPassengerQuota(companyId, fastify.redis)
+      if (!quota.allowed) {
+        return reply.paymentRequired(
+          `Yolcu kotanız dolu (${quota.used}/${quota.max}). Paketinizi yükseltmek için iletişime geçin`,
+        )
       }
 
       const { rows } = await fastify.db.query(

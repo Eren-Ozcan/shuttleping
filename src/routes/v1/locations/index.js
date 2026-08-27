@@ -8,6 +8,7 @@ import {
 } from './schema.js'
 import { locationKey, etaKey } from '../../../services/eta/index.js'
 import { enqueueEtaJob } from '../../../queues/index.js'
+import { getCompanyAccess, canIngestLocation } from '../../../services/billing.service.js'
 import { env } from '../../../config/env.js'
 
 // Son konum Redis'te tutulur; araç yayın kesilirse 5 dk sonra "çevrimdışı" sayılır
@@ -44,6 +45,13 @@ export default async function locationRoutes(fastify) {
       const { lat, lng, heading, speed, recordedAt } = request.body
       const companyId = request.user.companyId
       const driverId = request.user.sub
+
+      // Askıya alınmış şirkette konum kabul edilmez — sefer geçmişi büyümeye
+      // ve ETA/bildirim maliyeti akmaya devam etmesin (C1)
+      const access = await getCompanyAccess(companyId, fastify.redis)
+      if (!canIngestLocation(access)) {
+        return reply.paymentRequired('Şirket hesabı askıya alındı')
+      }
 
       const { rows } = await fastify.db.query(
         `SELECT id, route_id FROM trips

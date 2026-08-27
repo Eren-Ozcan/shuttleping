@@ -5,9 +5,11 @@
  */
 import { env } from '../config/env.js'
 import { locationKey, etaKey, etaCalcKey } from '../services/eta/index.js'
+import { markOverdueCompanies } from '../services/billing.service.js'
 import { logger } from '../utils/logger.js'
 
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000
+const BILLING_SWEEP_INTERVAL_MS = 60 * 60 * 1000
 
 /**
  * Belirtilen süredir ping gelmeyen aktif seferleri 'abandoned' işaretler ve
@@ -39,13 +41,36 @@ export async function sweepAbandonedTrips({ db, redis }) {
   return rows.length
 }
 
-export function startMaintenance({ db, redis }) {
-  const tick = () =>
-    sweepAbandonedTrips({ db, redis }).catch((err) =>
-      logger.error({ err }, 'Bakım süpürmesi başarısız'),
+/**
+ * Vadesi geçmiş şirketleri 'overdue' işaretler (C3). next_due_date bugüne
+ * kadar yazılıyor ama hiçbir kod yolu okumuyordu — vadesi geçen şirket bir
+ * insan butona basana kadar 'active' kalıyordu.
+ */
+export async function sweepOverdueCompanies({ redis }) {
+  const companies = await markOverdueCompanies(redis)
+  for (const company of companies) {
+    logger.warn(
+      { companyId: company.id, name: company.name },
+      'Şirket vadesi geçti — overdue işaretlendi',
     )
-  tick()
-  const timer = setInterval(tick, SWEEP_INTERVAL_MS)
-  timer.unref?.()
-  return timer
+  }
+  return companies.length
+}
+
+export function startMaintenance({ db, redis }) {
+  const run = (name, fn) => () =>
+    fn().catch((err) => logger.error({ err, sweep: name }, 'Bakım süpürmesi başarısız'))
+
+  const trips = run('trips', () => sweepAbandonedTrips({ db, redis }))
+  const billing = run('billing', () => sweepOverdueCompanies({ redis }))
+
+  trips()
+  billing()
+
+  const timers = [
+    setInterval(trips, SWEEP_INTERVAL_MS),
+    setInterval(billing, BILLING_SWEEP_INTERVAL_MS),
+  ]
+  for (const timer of timers) timer.unref?.()
+  return timers
 }

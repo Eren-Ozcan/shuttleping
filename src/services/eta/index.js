@@ -18,6 +18,7 @@
 import { env } from '../../config/env.js'
 import { getEtaSeconds, haversineMeters, fallbackEtaSeconds } from './distance.js'
 import { enqueueNotificationJob } from '../../queues/index.js'
+import { getCompanyAccess, canUseEtaProvider, canNotify } from '../billing.service.js'
 
 export const locationKey = (companyId, routeId) => `loc:${companyId}:${routeId}`
 export const etaKey = (companyId, routeId) => `eta:${companyId}:${routeId}`
@@ -138,8 +139,12 @@ export async function computeEtaForRoute(
   const etaSeconds = [...haversine]
   let source = 'haversine'
 
+  // Faturalama kapısı (C1): ödemesi gecikmiş şirket için faturalı sağlayıcı
+  // çağrısı yapılmaz — askıya alma harcamayı gerçekten durdurmalı
+  const access = await getCompanyAccess(companyId, redis)
   const query =
     pending.length > 0 &&
+    canUseEtaProvider(access) &&
     (await shouldQueryProvider(redis, routeId, {
       origin,
       previous,
@@ -191,6 +196,12 @@ export async function computeEtaForRoute(
     'EX',
     ETA_TTL_SECONDS,
   )
+
+  // Askıya alınmış şirkette bildirim üretilmez; ETA yine yazıldı, panel
+  // açıksa harita çalışmaya devam eder
+  if (!canNotify(access)) {
+    return { ok: true, tripId, stopCount: stops.length, source, notified: 0, billingBlocked: true }
+  }
 
   const { rows: passengers } = await db.query(
     `SELECT p.id, p.stop_id, p.notify_before_minutes, s.name AS stop_name
