@@ -96,5 +96,10 @@ butonuyla işaretliyor (vade otomatik +30 gün ileri atılıyor). Şirket
 (login + refresh) otomatik olarak 402 ile reddedilir — super_admin
 kendi girişini her zaman yapabilir.
 
+## 10. Sunum ve deneme haftası
+Bir şirkete sunum yapmadan ve pilot başlatmadan önce kapatılması gereken
+kritik bulgular, telefonu şoför telefonuna çeviren test ortamı kurulumu ve
+tam test matrisi için: `docs/PILOT-READINESS.md`.
+
 ---
 *Bu dosya proje ilerledikçe güncellenir. Bir adımı bitirince işaretleyip bana "adım X tamam" demen yeterli — kalan entegrasyonu ben bağlarım.*
