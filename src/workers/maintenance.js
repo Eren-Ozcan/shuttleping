@@ -6,6 +6,7 @@
 import { env } from '../config/env.js'
 import { locationKey, etaKey, etaCalcKey } from '../services/eta/index.js'
 import { markOverdueCompanies } from '../services/billing.service.js'
+import { purgeExpiredRefreshTokens } from '../services/auth.service.js'
 import { logger } from '../utils/logger.js'
 
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000
@@ -102,7 +103,11 @@ export async function sweepRetention({ db }) {
     env.NOTIFICATION_LOG_RETENTION_DAYS,
   )
 
-  if (deleted.locations || deleted.notifications) {
+  // refresh_tokens de sınırsız büyüyordu: rotasyon artık satırı silmiyor,
+  // iptal ediyor (D9), dolayısıyla temizlik daha da gerekli
+  deleted.refreshTokens = await purgeExpiredRefreshTokens()
+
+  if (deleted.locations || deleted.notifications || deleted.refreshTokens) {
     logger.info(deleted, 'Saklama süresi dolan kayıtlar silindi')
   }
   return deleted

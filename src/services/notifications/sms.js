@@ -1,10 +1,13 @@
 /**
- * Netgsm SMS adapter'ı (GET /sms/send/get).
+ * Netgsm SMS adapter'ı (POST /sms/send/get).
  * Arayüz: send({ passenger, message }) → { ok, error?, retryable? }
  *
  * Netgsm yanıtı düz metindir: "00 <jobid>" başarı; 20/30/40/50/51/70/85
  * hata kodlarıdır (30: geçersiz kimlik, 40: başlık tanımsız, 70: parametre
  * hatası, 85: sistem hatası — tek geçici olan budur).
+ *
+ * Kimlik bilgileri gövdede taşınır (D11): query string'de gönderildiklerinde
+ * giden proxy ve erişim loglarına düz metin şifre düşüyordu.
  */
 import { env } from '../../config/env.js'
 import { logger } from '../../utils/logger.js'
@@ -44,7 +47,10 @@ export async function send({ passenger, message }) {
 
   let res
   try {
-    res = await fetch(`https://api.netgsm.com.tr/sms/send/get?${params}`, {
+    res = await fetch('https://api.netgsm.com.tr/sms/send/get', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: params,
       signal: AbortSignal.timeout(10_000),
     })
   } catch (err) {

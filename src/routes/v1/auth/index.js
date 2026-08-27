@@ -3,7 +3,8 @@ import * as authService from '../../../services/auth.service.js'
 import { env } from '../../../config/env.js'
 
 const REFRESH_COOKIE = 'refreshToken'
-const REFRESH_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000 // 7 gün
+// Ömür env'den gelir (JWT_REFRESH_EXPIRES); eskiden burada sabitti
+const REFRESH_EXPIRES_MS = env.JWT_REFRESH_EXPIRES_MS
 
 const OVERDUE_MESSAGE =
   'Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin'
@@ -111,6 +112,18 @@ export default async function authRoutes(fastify) {
       return reply.unauthorized('Geçersiz veya süresi dolmuş refresh token')
     }
 
+    // Yeniden kullanım tespiti (D9): iptal edilmiş bir token tekrar sunulduysa
+    // kopyalanmış demektir. Tüm aile iptal edilir — hem hırsızın hem meşru
+    // kullanıcının oturumu düşer, kullanıcı yeniden giriş yapmak zorunda kalır.
+    if (record.revoked_at) {
+      await authService.revokeTokenFamily(record.family_id)
+      request.log.warn(
+        { userId: record.user_id, familyId: record.family_id },
+        'İptal edilmiş refresh token yeniden kullanıldı — aile iptal edildi',
+      )
+      return reply.unauthorized('Oturum güvenlik nedeniyle sonlandırıldı, tekrar giriş yapın')
+    }
+
     if (record.role !== 'super_admin') {
       const denied = paymentGate(
         { is_active: record.company_active, payment_status: record.company_payment_status },
@@ -119,9 +132,6 @@ export default async function authRoutes(fastify) {
       if (denied) return reply[denied.reply](denied.message)
     }
 
-    // Token rotation: eskiyi sil, yenisini yaz
-    await authService.deleteRefreshToken(tokenHash)
-
     const payload = { sub: record.user_id, role: record.role, companyId: record.company_id }
     const accessToken = fastify.jwt.sign(payload)
 
@@ -129,7 +139,15 @@ export default async function authRoutes(fastify) {
     const newHash = authService.hashToken(rawNew)
     const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_MS)
 
-    await authService.createRefreshToken(record.user_id, newHash, expiresAt)
+    // Rotasyon: yenisi aynı ailede açılır, eskisi silinmeyip iptal edilir —
+    // satır kalmazsa yeniden kullanım tespit edilemez
+    const created = await authService.createRefreshToken(
+      record.user_id,
+      newHash,
+      expiresAt,
+      record.family_id,
+    )
+    await authService.rotateRefreshToken(record.id, created.id)
 
     // Kullanıcı bilgisi de döner: panel access token'ı bellekte tuttuğu için
     // sayfa yenilendiğinde oturumu bununla yeniden kurar (D6)

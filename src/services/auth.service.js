@@ -29,13 +29,26 @@ export async function findUserByEmail(email) {
   return rows[0] ?? null
 }
 
-export async function createRefreshToken(userId, tokenHash, expiresAt) {
-  await pool.query(
-    'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-    [userId, tokenHash, expiresAt],
+/**
+ * Yeni refresh token satırı yazar.
+ * familyId verilmezse yeni bir aile açılır (ilk giriş); verilirse rotasyon
+ * zinciri aynı ailede devam eder (D9).
+ * @returns {Promise<{id: string, family_id: string}>}
+ */
+export async function createRefreshToken(userId, tokenHash, expiresAt, familyId) {
+  const { rows } = await pool.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id)
+     VALUES ($1, $2, $3, COALESCE($4, uuid_generate_v4()))
+     RETURNING id, family_id`,
+    [userId, tokenHash, expiresAt, familyId ?? null],
   )
+  return rows[0]
 }
 
+/**
+ * Token'ı hash'inden bulur. İptal edilmiş satırlar da döner — çağıranın
+ * yeniden kullanımı tespit edebilmesi için (D9).
+ */
 export async function findRefreshToken(tokenHash) {
   const { rows } = await pool.query(
     `SELECT rt.*, u.role, u.company_id, u.email, u.full_name,
@@ -52,6 +65,41 @@ export async function findRefreshToken(tokenHash) {
 }
 
 /**
+ * Token'ı iptal eder ve yerine geçeni işaretler (rotasyon).
+ * Silme yerine iptal: çalınmış bir kopyanın tekrar sunulduğunu görebilmek
+ * için satırın kalması gerekir.
+ */
+export async function rotateRefreshToken(tokenId, replacedById) {
+  await pool.query(
+    'UPDATE refresh_tokens SET revoked_at = now(), replaced_by = $2 WHERE id = $1',
+    [tokenId, replacedById],
+  )
+}
+
+/**
+ * Bir ailenin tüm token'larını iptal eder.
+ * İptal edilmiş bir token yeniden sunulduğunda çağrılır: token kopyalanmış
+ * demektir, hem hırsızın hem meşru kullanıcının oturumu düşmelidir.
+ */
+export async function revokeTokenFamily(familyId) {
+  const { rowCount } = await pool.query(
+    'UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL',
+    [familyId],
+  )
+  return rowCount
+}
+
+/** Süresi geçmiş ve uzun süre önce iptal edilmiş satırları siler. */
+export async function purgeExpiredRefreshTokens() {
+  const { rowCount } = await pool.query(
+    `DELETE FROM refresh_tokens
+     WHERE expires_at < now() - interval '7 days'
+        OR revoked_at < now() - interval '30 days'`,
+  )
+  return rowCount
+}
+
+/**
  * super_admin dışındaki roller için erişim kapısı: şirket pasifse ya da
  * ödemesi gecikmişse giriş bloklanır.
  */
@@ -64,12 +112,21 @@ export async function findCompanyAccess(companyId) {
   return rows[0] ?? null
 }
 
+/** Logout: token'ı ve ait olduğu tüm aileyi iptal eder. */
 export async function deleteRefreshToken(tokenHash) {
-  await pool.query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash])
+  await pool.query(
+    `UPDATE refresh_tokens SET revoked_at = now()
+     WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1)
+       AND revoked_at IS NULL`,
+    [tokenHash],
+  )
 }
 
 export async function deleteAllUserTokens(userId) {
-  await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId])
+  await pool.query(
+    'UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+    [userId],
+  )
 }
 
 /** Raw token'ı SHA-256 ile hash'le (DB'de raw token saklanmaz) */
