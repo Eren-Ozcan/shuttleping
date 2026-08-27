@@ -4,6 +4,15 @@ import { pool } from '../db/pool.js'
 
 const SALT_ROUNDS = 12
 
+/**
+ * Kayıtlı olmayan e-posta için karşılaştırılacak sahte hash. Kullanıcı
+ * bulunamadığında da bcrypt maliyeti ödenir; aksi halde yanıt süresi farkı
+ * e-postanın sistemde olup olmadığını sızdırır. Değeri hiçbir şifreyle
+ * eşleşmez (geçerli bir bcrypt hash, rastgele salt).
+ */
+export const DUMMY_PASSWORD_HASH =
+  '$2b$12$C6UzMDM.H6dfI/f/IKcEe.9L/3pJ0zfMPPZ0/9x3nqgWDXBcQfhvi'
+
 export async function hashPassword(password) {
   return bcrypt.hash(password, SALT_ROUNDS)
 }
@@ -29,8 +38,10 @@ export async function createRefreshToken(userId, tokenHash, expiresAt) {
 
 export async function findRefreshToken(tokenHash) {
   const { rows } = await pool.query(
-    `SELECT rt.*, u.role, u.company_id, u.is_active AS user_active,
-            c.payment_status AS company_payment_status
+    `SELECT rt.*, u.role, u.company_id, u.email, u.full_name,
+            u.is_active AS user_active,
+            c.payment_status AS company_payment_status,
+            c.is_active AS company_active
      FROM refresh_tokens rt
      JOIN users u ON u.id = rt.user_id
      LEFT JOIN companies c ON c.id = u.company_id
@@ -40,13 +51,17 @@ export async function findRefreshToken(tokenHash) {
   return rows[0] ?? null
 }
 
-/** super_admin dışındaki roller için: şirketin ödemesi gecikmişse erişim bloklanır */
-export async function findCompanyPaymentStatus(companyId) {
+/**
+ * super_admin dışındaki roller için erişim kapısı: şirket pasifse ya da
+ * ödemesi gecikmişse giriş bloklanır.
+ */
+export async function findCompanyAccess(companyId) {
+  if (!companyId) return null
   const { rows } = await pool.query(
-    'SELECT payment_status FROM companies WHERE id = $1',
+    'SELECT payment_status, is_active FROM companies WHERE id = $1',
     [companyId],
   )
-  return rows[0]?.payment_status ?? null
+  return rows[0] ?? null
 }
 
 export async function deleteRefreshToken(tokenHash) {
