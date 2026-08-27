@@ -20,6 +20,7 @@ export const createCompanySchema = {
         paymentStatus: { type: 'string' },
         lastPaymentDate: { type: ['string', 'null'] },
         nextDueDate: { type: ['string', 'null'] },
+        maxPassengers: { type: ['integer', 'null'] },
         createdAt: { type: 'string' },
       },
     },
@@ -40,9 +41,12 @@ export const updatePaymentStatusSchema = {
     required: ['paymentStatus'],
     additionalProperties: false,
     properties: {
-      paymentStatus: { type: 'string', enum: ['active', 'overdue'] },
+      paymentStatus: { type: 'string', enum: ['active', 'overdue', 'suspended'] },
       // Sadece paymentStatus: 'active' ile birlikte anlamlı; verilmezse +30 gün varsayılır
       nextDueDate: { type: 'string', format: 'date-time' },
+      // 'active' ile birlikte ödeme defterine kayıt düşer
+      amount: { type: 'number', minimum: 0 },
+      note: { type: 'string', maxLength: 500 },
     },
   },
   response: {
@@ -56,6 +60,7 @@ export const updatePaymentStatusSchema = {
         paymentStatus: { type: 'string' },
         lastPaymentDate: { type: ['string', 'null'] },
         nextDueDate: { type: ['string', 'null'] },
+        maxPassengers: { type: ['integer', 'null'] },
         createdAt: { type: 'string' },
       },
     },
@@ -80,6 +85,46 @@ export const createCompanyAdminSchema = {
       password: { type: 'string', minLength: 8, maxLength: 128 },
       fullName: { type: 'string', minLength: 2, maxLength: 100 },
       phone: { type: 'string', minLength: 7, maxLength: 20 },
+    },
+  },
+}
+
+export const updateCompanySchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+    },
+  },
+  body: {
+    type: 'object',
+    minProperties: 1,
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string', minLength: 2, maxLength: 100 },
+      isActive: { type: 'boolean' },
+      // null = sınırsız
+      maxPassengers: { type: ['integer', 'null'], minimum: 1 },
+    },
+  },
+}
+
+export const listPaymentsSchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+    },
+  },
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
     },
   },
 }

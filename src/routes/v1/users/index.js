@@ -1,5 +1,5 @@
 import { listUsersSchema, createUserSchema, updateUserSchema } from './schema.js'
-import { hashPassword } from '../../../services/auth.service.js'
+import { hashPassword, deleteAllUserTokens } from '../../../services/auth.service.js'
 import { buildUpdate } from '../../../utils/sql.js'
 
 const USER_COLUMNS = `id, email, role, full_name AS "fullName", phone,
@@ -89,6 +89,13 @@ export default async function userRoutes(fastify) {
       )
 
       if (!rows[0]) return reply.notFound('Kullanıcı bulunamadı')
+
+      // Şifre değişimi ve pasifleştirme mevcut oturumları sonlandırmalı (C2).
+      // deleteAllUserTokens tanımlıydı ama hiçbir yerden çağrılmıyordu: şifre
+      // değiştirildikten sonra çalınmış bir refresh token 7 gün daha çalışıyordu.
+      if (password !== undefined || isActive === false) {
+        await deleteAllUserTokens(request.params.id)
+      }
       return rows[0]
     },
   )

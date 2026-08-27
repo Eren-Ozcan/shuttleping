@@ -5,6 +5,32 @@ import { env } from '../../../config/env.js'
 const REFRESH_COOKIE = 'refreshToken'
 const REFRESH_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000 // 7 gün
 
+const OVERDUE_MESSAGE =
+  'Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin'
+
+/**
+ * Kademeli faturalama kapısı (Faz C).
+ *
+ * overdue   — yalnızca company_admin bloklanır. Sürücü girişi açık kalır ki
+ *             servis işlemeye devam etsin: yolcu ödeme ilişkisinin tarafı
+ *             değil, baskı hesabı yöneten kişiye binmeli.
+ * suspended — tüm roller bloklanır.
+ *
+ * @returns {{reply:string, message:string}|null} null = erişim serbest
+ */
+function paymentGate(company, role) {
+  if (!company?.is_active) {
+    return { reply: 'forbidden', message: 'Şirket hesabı devre dışı' }
+  }
+  if (company.payment_status === 'suspended') {
+    return { reply: 'paymentRequired', message: 'Şirket hesabı askıya alındı' }
+  }
+  if (company.payment_status === 'overdue' && role === 'company_admin') {
+    return { reply: 'paymentRequired', message: OVERDUE_MESSAGE }
+  }
+  return null
+}
+
 function refreshCookieOpts(expires) {
   return {
     httpOnly: true,
@@ -43,12 +69,8 @@ export default async function authRoutes(fastify) {
 
       if (user.role !== 'super_admin') {
         const company = await authService.findCompanyAccess(user.company_id)
-        if (!company?.is_active) {
-          return reply.forbidden('Şirket hesabı devre dışı')
-        }
-        if (company.payment_status === 'overdue') {
-          return reply.paymentRequired('Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin')
-        }
+        const denied = paymentGate(company, user.role)
+        if (denied) return reply[denied.reply](denied.message)
       }
 
       const payload = { sub: user.id, role: user.role, companyId: user.company_id }
@@ -90,12 +112,11 @@ export default async function authRoutes(fastify) {
     }
 
     if (record.role !== 'super_admin') {
-      if (!record.company_active) {
-        return reply.forbidden('Şirket hesabı devre dışı')
-      }
-      if (record.company_payment_status === 'overdue') {
-        return reply.paymentRequired('Şirketinizin ödemesi gecikmiş, lütfen yöneticinizle iletişime geçin')
-      }
+      const denied = paymentGate(
+        { is_active: record.company_active, payment_status: record.company_payment_status },
+        record.role,
+      )
+      if (denied) return reply[denied.reply](denied.message)
     }
 
     // Token rotation: eskiyi sil, yenisini yaz
