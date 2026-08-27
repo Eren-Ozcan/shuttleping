@@ -30,6 +30,12 @@ export const env = {
 
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
+  // Rate limit (Faz D) — dakika başına istek. Global tavan cömert; asıl
+  // sıkı limitler route seviyesinde (login, konum ingest).
+  RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX ?? 300),
+  RATE_LIMIT_LOGIN_MAX: Number(process.env.RATE_LIMIT_LOGIN_MAX ?? 5),
+  RATE_LIMIT_LOCATION_MAX: Number(process.env.RATE_LIMIT_LOCATION_MAX ?? 12),
+
   // ETA motoru (Faz 3) — anahtar yoksa haversine fallback kullanılır
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? null,
   ETA_FALLBACK_SPEED_KMH: Number(process.env.ETA_FALLBACK_SPEED_KMH ?? 25),

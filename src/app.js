@@ -5,6 +5,7 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import fastifyStatic from '@fastify/static'
 import sensible from '@fastify/sensible'
+import rateLimit from '@fastify/rate-limit'
 import { env } from './config/env.js'
 import { logger } from './utils/logger.js'
 import dbPlugin from './plugins/db.js'
@@ -47,6 +48,28 @@ export async function buildApp(opts = {}) {
   await fastify.register(dbPlugin)
   await fastify.register(redisPlugin)
   await fastify.register(authPlugin)
+
+  /**
+   * Rate limit (D1). preHandler'da çalışır: auth hook'ları onRequest'te
+   * koştuğu için bu noktada request.user hazırdır ve limit kullanıcı bazında
+   * sayılabilir — mobil operatör NAT'ı arkasındaki sürücüler birbirinin
+   * kotasını yemez. Kimliksiz istekler IP'ye düşer.
+   *
+   * Sayaç Redis'te tutulur; birden fazla instance aynı kotayı paylaşır.
+   */
+  await fastify.register(rateLimit, {
+    global: true,
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: '1 minute',
+    redis: fastify.redis,
+    nameSpace: 'rl:',
+    keyGenerator: (request) => request.user?.sub ?? request.ip,
+    errorResponseBuilder: () => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Çok fazla istek gönderdiniz, lütfen biraz bekleyin',
+    }),
+  })
 
   // Route'lar
   await fastify.register(authRoutes, { prefix: '/api/v1/auth' })
