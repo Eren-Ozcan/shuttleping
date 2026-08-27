@@ -6,9 +6,14 @@
  * Faz A: dedup artık trip_notifications tablosuyla; her sefer bir trips satırı,
  * durak durumu trip_stops.state.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { getTestApp, closeTestApp } from '../helpers/app.js'
-import { computeEtaForRoute, locationKey, etaKey } from '../../src/services/eta/index.js'
+import {
+  computeEtaForRoute,
+  locationKey,
+  etaKey,
+  etaCalcKey,
+} from '../../src/services/eta/index.js'
 
 let app
 const ids = {}
@@ -80,15 +85,27 @@ afterAll(async () => {
   await closeTestApp()
 })
 
+/** Sağlayıcı yanıtını taklit eder: her durak için sabit saniye. */
+const provider = (seconds) => async (origin, destinations) => ({
+  seconds: destinations.map(() => seconds),
+  source: 'google',
+  elements: destinations.length,
+})
+
 function deps(overrides = {}) {
   return {
     db: app.db,
     redis: app.redis,
-    getEta: async () => [300], // 5 dk — 10 dk eşiğin altında
+    getEta: provider(300), // 5 dk — 10 dk eşiğin altında
     enqueueNotification: async () => {},
     ...overrides,
   }
 }
+
+// Throttle anahtarı testler arası sızmasın — her test taze sorgu yapabilsin
+beforeEach(async () => {
+  await app.redis.del(etaCalcKey(ids.routeId), etaKey(ids.companyId, ids.routeId))
+})
 
 const target = () => ({
   companyId: ids.companyId,
@@ -196,7 +213,7 @@ describe('computeEtaForRoute', () => {
     const enqueued = []
     const result = await computeEtaForRoute(
       deps({
-        getEta: async () => [1800], // 30 dk > 10 dk eşik
+        getEta: provider(1800), // 30 dk > 10 dk eşik
         enqueueNotification: async (job) => enqueued.push(job),
       }),
       { companyId: ids.companyId, routeId: ids.routeId, tripId: trip3Id },
@@ -207,5 +224,106 @@ describe('computeEtaForRoute', () => {
 
     await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [trip3Id])
     await app.db.query('DELETE FROM trips WHERE id = $1', [trip3Id])
+  })
+})
+
+/** Faz B — sağlayıcı çağrısının maliyet kontrolü. */
+describe('computeEtaForRoute maliyet kontrolü', () => {
+  async function freshTrip() {
+    await app.db.query(
+      `UPDATE trips SET status = 'completed' WHERE route_id = $1 AND status = 'active'`,
+      [ids.routeId],
+    )
+    const trip = await app.db.query(
+      `INSERT INTO trips (company_id, route_id, driver_id) VALUES ($1, $2, $3) RETURNING id`,
+      [ids.companyId, ids.routeId, ids.driverId],
+    )
+    const tripId = trip.rows[0].id
+    await app.db.query(
+      `INSERT INTO trip_stops (company_id, trip_id, stop_id, sequence) VALUES ($1, $2, $3, 1)`,
+      [ids.companyId, tripId, ids.stopId],
+    )
+    return tripId
+  }
+
+  it('throttle penceresi içinde sağlayıcıya ikinci kez sorulmaz, önceki ETA kullanılır', async () => {
+    const tripId = await freshTrip()
+    await app.redis.set(
+      locationKey(ids.companyId, ids.routeId),
+      JSON.stringify({ lat: 41.2, lng: 29.2, ts: Date.now() }),
+      'EX',
+      60,
+    )
+
+    let calls = 0
+    const counting = async (origin, destinations) => {
+      calls++
+      return {
+        seconds: destinations.map(() => 1800),
+        source: 'google',
+        elements: destinations.length,
+      }
+    }
+
+    const first = await computeEtaForRoute(deps({ getEta: counting }), {
+      companyId: ids.companyId,
+      routeId: ids.routeId,
+      tripId,
+    })
+    expect(first.source).toBe('google')
+    expect(calls).toBe(1)
+
+    // Aracı hareket ettir ki "hareket etmedi" kuralı değil throttle devreye girsin
+    await app.redis.set(
+      locationKey(ids.companyId, ids.routeId),
+      JSON.stringify({ lat: 41.25, lng: 29.25, ts: Date.now() }),
+      'EX',
+      60,
+    )
+    const second = await computeEtaForRoute(deps({ getEta: counting }), {
+      companyId: ids.companyId,
+      routeId: ids.routeId,
+      tripId,
+    })
+
+    expect(calls).toBe(1) // throttle engelledi
+    expect(second.source).toBe('cached')
+
+    const eta = JSON.parse(await app.redis.get(etaKey(ids.companyId, ids.routeId)))
+    expect(eta.stops[0].etaSeconds).toBe(1800) // önceki sağlayıcı sonucu korundu
+
+    await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [tripId])
+    await app.db.query('DELETE FROM trips WHERE id = $1', [tripId])
+  })
+
+  it('geçilmiş durak sağlayıcıya sorulmaz', async () => {
+    const tripId = await freshTrip()
+    await app.db.query(
+      `UPDATE trip_stops SET state = 'passed', passed_at = now() WHERE trip_id = $1`,
+      [tripId],
+    )
+    await app.redis.set(
+      locationKey(ids.companyId, ids.routeId),
+      JSON.stringify({ lat: 41.2, lng: 29.2, ts: Date.now() }),
+      'EX',
+      60,
+    )
+
+    let asked = null
+    const result = await computeEtaForRoute(
+      deps({
+        getEta: async (origin, destinations) => {
+          asked = destinations
+          return { seconds: [], source: 'google', elements: 0 }
+        },
+      }),
+      { companyId: ids.companyId, routeId: ids.routeId, tripId },
+    )
+
+    expect(asked).toBeNull() // hiç sorulmadı
+    expect(result).toMatchObject({ ok: true, notified: 0 })
+
+    await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [tripId])
+    await app.db.query('DELETE FROM trips WHERE id = $1', [tripId])
   })
 })

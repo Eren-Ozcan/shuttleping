@@ -83,6 +83,7 @@ describe('GET /health/deep', () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/health/deep' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ status: 'ok', db: 'ok', redis: 'ok' })
+    // maps bayrağı yalnızca Google anahtarı tanımlıysa eklenir
+    expect(res.json()).toMatchObject({ status: 'ok', db: 'ok', redis: 'ok' })
   })
 })
