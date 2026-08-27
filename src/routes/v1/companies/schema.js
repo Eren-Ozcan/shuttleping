@@ -21,6 +21,7 @@ export const createCompanySchema = {
         lastPaymentDate: { type: ['string', 'null'] },
         nextDueDate: { type: ['string', 'null'] },
         maxPassengers: { type: ['integer', 'null'] },
+        dryRun: { type: 'boolean' },
         createdAt: { type: 'string' },
       },
     },
@@ -61,6 +62,7 @@ export const updatePaymentStatusSchema = {
         lastPaymentDate: { type: ['string', 'null'] },
         nextDueDate: { type: ['string', 'null'] },
         maxPassengers: { type: ['integer', 'null'] },
+        dryRun: { type: 'boolean' },
         createdAt: { type: 'string' },
       },
     },
@@ -107,6 +109,8 @@ export const updateCompanySchema = {
       isActive: { type: 'boolean' },
       // null = sınırsız
       maxPassengers: { type: ['integer', 'null'], minimum: 1 },
+      // Prova modu: bu şirketin bildirimleri gerçekten gönderilmez
+      dryRun: { type: 'boolean' },
     },
   },
 }

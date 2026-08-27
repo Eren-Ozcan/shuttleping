@@ -60,6 +60,12 @@ export const env = {
 
   // Bildirim kanalları (Faz 4) — boş bırakılan kanal devre dışı kalır,
   // gönderim denemesi notification_logs'a 'failed' olarak düşer
+  // Prova modu (Faz F3): açıkken hiçbir gerçek mesaj gitmez, log'a 'dry_run'
+  // olarak düşer. TEST_CHAT_ID verilirse mesaj bastırılmak yerine o tek
+  // Telegram hesabına yönlendirilir — akış uçtan uca sınanır.
+  NOTIFICATION_DRY_RUN: process.env.NOTIFICATION_DRY_RUN === 'true',
+  NOTIFICATION_TEST_CHAT_ID: process.env.NOTIFICATION_TEST_CHAT_ID ?? null,
+
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
   NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
   NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,

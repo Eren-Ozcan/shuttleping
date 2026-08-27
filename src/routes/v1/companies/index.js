@@ -15,6 +15,7 @@ const COMPANY_COLUMNS = `id, name, slug, is_active AS "isActive",
   last_payment_date AS "lastPaymentDate",
   next_due_date AS "nextDueDate",
   max_passengers AS "maxPassengers",
+  dry_run AS "dryRun",
   created_at AS "createdAt"`
 
 export default async function companyRoutes(fastify) {
@@ -172,11 +173,12 @@ export default async function companyRoutes(fastify) {
     '/:id',
     { schema: updateCompanySchema, onRequest: [fastify.requireRole(['super_admin'])] },
     async (request, reply) => {
-      const { name, isActive, maxPassengers } = request.body
+      const { name, isActive, maxPassengers, dryRun } = request.body
       const { sets, params } = buildUpdate({
         name,
         is_active: isActive,
         max_passengers: maxPassengers,
+        dry_run: dryRun,
       })
 
       params.push(request.params.id)

@@ -36,7 +36,7 @@ export async function handleNotificationJob(
   if (!canNotify(access)) return { skipped: 'billing_blocked' }
 
   const message = buildApproachMessage(data)
-  const result = await notify(passenger, message)
+  const result = await notify(passenger, message, { dryRun: access.dryRun })
 
   await db.query(
     `INSERT INTO notification_logs
@@ -50,7 +50,8 @@ export async function handleNotificationJob(
       data.stopId,
       passenger.notification_channel,
       message,
-      result.ok ? 'sent' : 'failed',
+      // Prova gönderimleri denetim kaydında canlıdan ayrılmalı
+      result.dryRun ? 'dry_run' : result.ok ? 'sent' : 'failed',
       result.ok ? null : result.error,
     ],
   )

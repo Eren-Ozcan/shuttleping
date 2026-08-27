@@ -28,7 +28,7 @@ export const canIngestLocation = canNotify
 
 async function loadCompanyAccess(companyId) {
   const { rows } = await pool.query(
-    `SELECT payment_status, is_active, max_passengers
+    `SELECT payment_status, is_active, max_passengers, dry_run
      FROM companies WHERE id = $1`,
     [companyId],
   )
@@ -37,6 +37,7 @@ async function loadCompanyAccess(companyId) {
     paymentStatus: rows[0].payment_status,
     isActive: rows[0].is_active,
     maxPassengers: rows[0].max_passengers,
+    dryRun: rows[0].dry_run,
   }
 }
 
