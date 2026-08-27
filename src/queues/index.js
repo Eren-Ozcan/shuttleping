@@ -37,10 +37,10 @@ export function getNotificationQueue() {
  * konum ping'leri yeni job üretmez (burst dedup). BullMQ custom jobId
  * ':' içeremez.
  */
-export async function enqueueEtaJob({ companyId, routeId }) {
+export async function enqueueEtaJob({ companyId, routeId, tripId }) {
   await getEtaQueue().add(
     'compute',
-    { companyId, routeId },
+    { companyId, routeId, tripId },
     { jobId: `eta-${routeId}`, removeOnComplete: true, removeOnFail: true },
   )
 }

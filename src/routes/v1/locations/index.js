@@ -13,55 +13,74 @@ const LOCATION_TTL_SECONDS = 300
 export default async function locationRoutes(fastify) {
   /**
    * POST /api/v1/locations
-   * Sürücü (Android app) anlık konum gönderir.
-   * Sürücünün atandığı aktif güzergah bulunur, son konum Redis'e yazılır,
-   * ETA worker'ı için kuyruğa job atılır.
+   * Sürücü anlık konum gönderir. Konum yalnızca AKTİF SEFER varken kabul edilir
+   * (POST /api/v1/trips/start ile açılır); son konum Redis'e yazılır, sefer
+   * geçmişine iz düşülür ve ETA worker'ı için kuyruğa job atılır.
    */
   fastify.post(
     '/',
     { schema: ingestLocationSchema, onRequest: [fastify.requireRole(['driver'])] },
     async (request, reply) => {
-      const { lat, lng, heading, speed } = request.body
+      const { lat, lng, heading, speed, recordedAt } = request.body
       const companyId = request.user.companyId
       const driverId = request.user.sub
 
       const { rows } = await fastify.db.query(
-        `SELECT id FROM routes
-         WHERE driver_id = $1 AND company_id = $2 AND is_active = true`,
+        `SELECT id, route_id FROM trips
+         WHERE driver_id = $1 AND company_id = $2 AND status = 'active'`,
         [driverId, companyId],
       )
       if (!rows[0]) {
-        return reply.notFound('Size atanmış aktif bir güzergah yok')
+        return reply.conflict('Önce seferi başlatın (POST /api/v1/trips/start)')
       }
 
-      const routeId = rows[0].id
-      const payload = JSON.stringify({
-        lat,
-        lng,
-        heading: heading ?? null,
-        speed: speed ?? null,
-        driverId,
-        ts: Date.now(),
-      })
+      const tripId = rows[0].id
+      const routeId = rows[0].route_id
+      // Offline buffer flush'ı: eski bir fix canlı konumu ve ETA'yı tetiklemesin,
+      // sadece geçmişe işlenir. Bağlantının döndüğünü kanıtladığı için last_ping
+      // yine tazelenir (yanlış "abandoned" işaretlemesini önler).
+      const isBackfill = recordedAt !== undefined
 
       await Promise.all([
-        fastify.redis.set(
-          locationKey(companyId, routeId),
-          payload,
-          'EX',
-          LOCATION_TTL_SECONDS,
-        ),
+        isBackfill
+          ? null
+          : fastify.redis.set(
+              locationKey(companyId, routeId),
+              JSON.stringify({
+                lat,
+                lng,
+                heading: heading ?? null,
+                speed: speed ?? null,
+                driverId,
+                tripId,
+                ts: Date.now(),
+              }),
+              'EX',
+              LOCATION_TTL_SECONDS,
+            ),
         // Sefer geçmişi (Faz 7) — append-only iz kaydı
         fastify.db.query(
-          `INSERT INTO location_history (company_id, route_id, driver_id, lat, lng, speed, heading)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [companyId, routeId, driverId, lat, lng, speed ?? null, heading ?? null],
+          `INSERT INTO location_history
+             (company_id, route_id, trip_id, driver_id, lat, lng, speed, heading, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now()))`,
+          [
+            companyId,
+            routeId,
+            tripId,
+            driverId,
+            lat,
+            lng,
+            speed ?? null,
+            heading ?? null,
+            recordedAt ?? null,
+          ],
         ),
+        fastify.db.query('UPDATE trips SET last_ping_at = now() WHERE id = $1', [tripId]),
       ])
 
-      await enqueueEtaJob({ companyId, routeId })
+      if (!isBackfill) await enqueueEtaJob({ companyId, routeId, tripId })
 
-      return { ok: true, routeId }
+      return { ok: true, routeId, tripId }
     },
   )
 

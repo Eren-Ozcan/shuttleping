@@ -8,6 +8,8 @@ export const ingestLocationSchema = {
       lng: { type: 'number', minimum: -180, maximum: 180 },
       heading: { type: 'number', minimum: 0, maximum: 360 },
       speed: { type: 'number', minimum: 0 },
+      // Offline buffer flush'ında gerçek yakalanma anı (ISO); yoksa now()
+      recordedAt: { type: 'string', format: 'date-time' },
     },
   },
 }
