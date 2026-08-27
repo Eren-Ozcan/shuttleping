@@ -1,8 +1,13 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest'
 import { getTestApp, closeTestApp, clearRateLimits } from '../helpers/app.js'
 
+// Rate limit anahtarı kimliksiz isteklerde IP. Test dosyaları paralel koştuğu
+// için bu dosyaya özel bir adres kullanılır; sayaçlar başka dosyalarla
+// karışmaz ve limit testi kararlı olur.
+const IP = '10.0.0.1'
+
 // Login rate limit'i dakikada 5 — her test taze sayaçla başlamalı
-beforeEach(clearRateLimits)
+beforeEach(() => clearRateLimits(IP))
 afterAll(closeTestApp)
 
 describe('POST /api/v1/auth/login', () => {
@@ -11,6 +16,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      remoteAddress: IP,
       payload: {},
     })
     expect(res.statusCode).toBe(400)
@@ -21,6 +27,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      remoteAddress: IP,
       payload: { email: 'not-an-email', password: 'validpassword' },
     })
     expect(res.statusCode).toBe(400)
@@ -31,6 +38,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      remoteAddress: IP,
       payload: { email: 'notexist@test.com', password: 'wrongpassword' },
     })
     expect(res.statusCode).toBe(401)
@@ -43,6 +51,7 @@ describe('POST /api/v1/auth/refresh', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/refresh',
+      remoteAddress: IP,
     })
     expect(res.statusCode).toBe(401)
   })
@@ -52,6 +61,7 @@ describe('POST /api/v1/auth/refresh', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/refresh',
+      remoteAddress: IP,
       cookies: { refreshToken: 'invalid_token_value' },
     })
     expect(res.statusCode).toBe(401)
@@ -65,6 +75,7 @@ describe('login rate limit (D1)', () => {
       app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
+        remoteAddress: IP,
         payload: { email: 'brute@test.com', password: 'wrongpassword' },
       })
 
@@ -84,6 +95,7 @@ describe('POST /api/v1/auth/logout', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/logout',
+      remoteAddress: IP,
     })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ success: true })

@@ -9,6 +9,11 @@ afterAll(async () => {
     await app.db.query('DELETE FROM users WHERE id = $1', [created.adminId])
   }
   if (created.companyId) {
+    // "Ödeme Alındı" artık ödeme defterine kayıt düşüyor (C4) — şirket
+    // silinmeden önce temizlenmeli
+    await app.db.query('DELETE FROM company_payments WHERE company_id = $1', [
+      created.companyId,
+    ])
     await app.db.query('DELETE FROM companies WHERE id = $1', [created.companyId])
   }
   await closeTestApp()

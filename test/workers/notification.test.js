@@ -20,6 +20,13 @@ function fakeDb(passengerRow) {
   }
 }
 
+/** Ödemesi güncel şirket — faturalama kapısı bu testlerin konusu değil. */
+const activeAccess = async () => ({
+  paymentStatus: 'active',
+  isActive: true,
+  maxPassengers: null,
+})
+
 const jobData = {
   companyId: '00000000-0000-4000-8000-000000000001',
   routeId: '00000000-0000-4000-8000-000000000002',
@@ -32,7 +39,7 @@ const jobData = {
 describe('handleNotificationJob', () => {
   it('yolcu bulunamazsa işi atlar, log yazmaz', async () => {
     const db = fakeDb(null)
-    const result = await handleNotificationJob({ db }, jobData)
+    const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toEqual({ skipped: 'passenger_not_found' })
     expect(db.queries).toHaveLength(1) // sadece SELECT
   })
@@ -45,7 +52,7 @@ describe('handleNotificationJob', () => {
       telegram_chat_id: null,
     })
 
-    const result = await handleNotificationJob({ db }, jobData)
+    const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
 
     expect(result.ok).toBe(false)
     expect(result.error).toBe('missing_telegram_chat_id')
@@ -65,7 +72,7 @@ describe('handleNotificationJob', () => {
       notification_channel: 'telegram',
       telegram_chat_id: '123',
     })
-    const result = await handleNotificationJob({ db }, jobData)
+    const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toEqual({ skipped: 'company_mismatch' })
     expect(db.queries).toHaveLength(1) // sadece SELECT, log yazılmaz
   })
@@ -77,7 +84,27 @@ describe('handleNotificationJob', () => {
       notification_channel: 'posta_guvercini',
     })
 
-    const result = await handleNotificationJob({ db }, jobData)
+    const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toMatchObject({ ok: false, error: 'unknown_channel' })
+  })
+
+  it('askıya alınmış şirkette gönderim yapılmaz (C1)', async () => {
+    const db = fakeDb({
+      id: jobData.passengerId,
+      company_id: jobData.companyId,
+      notification_channel: 'telegram',
+      telegram_chat_id: '123',
+    })
+    const suspended = async () => ({
+      paymentStatus: 'suspended',
+      isActive: true,
+      maxPassengers: null,
+    })
+
+    const result = await handleNotificationJob({ db, checkAccess: suspended }, jobData)
+
+    expect(result).toEqual({ skipped: 'billing_blocked' })
+    // Gönderim de log da yok — ödemeyen müşteri için SMS maliyeti doğmaz
+    expect(db.queries).toHaveLength(1)
   })
 })
