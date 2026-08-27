@@ -276,6 +276,50 @@ describe('yolcu kotası (C6)', () => {
   })
 })
 
+describe('refresh token ailesi (D9)', () => {
+  /** Login → refresh cookie'sini çıkarır. */
+  async function loginCookie(email) {
+    const res = await login(email)
+    expect(res.statusCode).toBe(200)
+    return res.cookies.find((c) => c.name === 'refreshToken').value
+  }
+
+  const refresh = (cookie) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      remoteAddress: IP,
+      cookies: { refreshToken: cookie },
+    })
+
+  it('rotasyon çalışır: yeni token geçerli, eskisi artık kabul edilmez', async () => {
+    const first = await loginCookie(ids.driverEmail)
+
+    const rotated = await refresh(first)
+    expect(rotated.statusCode).toBe(200)
+    const second = rotated.cookies.find((c) => c.name === 'refreshToken').value
+    expect(second).not.toBe(first)
+
+    expect((await refresh(second)).statusCode).toBe(200)
+  })
+
+  it('iptal edilmiş token yeniden kullanılırsa tüm aile düşer', async () => {
+    const first = await loginCookie(ids.driverEmail)
+
+    const rotated = await refresh(first)
+    expect(rotated.statusCode).toBe(200)
+    const second = rotated.cookies.find((c) => c.name === 'refreshToken').value
+
+    // Çalınmış kopya: rotasyonla iptal edilmiş olan eski token tekrar sunuluyor
+    const replay = await refresh(first)
+    expect(replay.statusCode).toBe(401)
+
+    // Hırsızlık tespit edildi — meşru oturum da sonlandırılmalı, aksi halde
+    // saldırgan yenilemeye devam ederken kullanıcı hiçbir şey fark etmez
+    expect((await refresh(second)).statusCode).toBe(401)
+  })
+})
+
 describe('ödeme defteri (C4)', () => {
   it('ödeme alındı işaretlemesi geçmişe kayıt düşer', async () => {
     const superAuth = {

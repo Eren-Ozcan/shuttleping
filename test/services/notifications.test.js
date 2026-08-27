@@ -128,9 +128,29 @@ describe('sms.send', () => {
     const result = await sms.send({ passenger, message: 'Servis geliyor' })
     expect(result).toEqual({ ok: true })
 
-    const url = new URL(fetchMock.mock.calls[0][0])
-    expect(url.searchParams.get('gsmno')).toBe('5321112233')
-    expect(url.searchParams.get('msgheader')).toBe('SHUTTLEPING')
+    // Kimlik bilgileri gövdede taşınır (D11) — query string'de şifre
+    // giden proxy/erişim loglarına düz metin düşüyordu
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.netgsm.com.tr/sms/send/get')
+    expect(init.method).toBe('POST')
+    expect(init.body.get('gsmno')).toBe('5321112233')
+    expect(init.body.get('msgheader')).toBe('SHUTTLEPING')
+    expect(init.body.get('password')).toBe('testpass')
+  })
+
+  it('şifre URL\'de taşınmaz', async () => {
+    configureNetgsm()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '00 12345678',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await sms.send({ passenger, message: 'test' })
+
+    expect(fetchMock.mock.calls[0][0]).not.toContain('testpass')
+    expect(fetchMock.mock.calls[0][0]).not.toContain('?')
   })
 
   it('30 (geçersiz kimlik) kalıcı, 85 (sistem hatası) geçicidir', async () => {
