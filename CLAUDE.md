@@ -23,12 +23,14 @@ npm run dev                          # Dev server (--watch ile auto-restart)
 cd admin && npm install && npm run dev  # Admin panel dev (5173, /api proxy'li)
 npm run build:admin                  # Paneli public/admin'e derle (Fastify servis eder)
 npm run backup                       # pg_dump yedeği (backups/, docker fallback'li)
+npm run restore -- <dump> [--url X]  # Yedeği geri yükle (onay ister; --force ile atlanır)
 ```
 
 ### Testing (commit öncesi zorunlu)
 ```bash
-npm test                             # Tüm testleri çalıştır
+npm test                             # Tüm testleri çalıştır (servis_takip_test DB)
 npm run test:watch                   # Watch modu
+npm run test:coverage                # Kapsam raporu
 npx vitest run test/v1/auth.test.js  # Tek dosya
 ```
 
@@ -47,15 +49,15 @@ npm run lint
 | Kuyruk | BullMQ + Redis (AOF persistence) |
 | Auth | JWT access token (15dk) + opaque refresh token (7g, HttpOnly cookie) |
 | Logger | Pino — structured JSON, no `console.log` |
-| ETA | Google Maps Distance Matrix API (anahtar yoksa haversine fallback) |
+| ETA | Google Routes API `computeRouteMatrix` (anahtar yoksa haversine fallback) |
 | Bildirim | Telegram Bot API + Netgsm SMS |
 | Admin UI | React (Türkçe) |
-| Hosting | Railway (staging + prod, zero-downtime) |
+| Hosting | Railway (`railway.json`) — **henüz deploy edilmedi** |
 
 ### Klasör Yapısı
 ```
 src/
-  config/env.js          — Tüm env var'ları başlangıçta doğrular; eksik var → crash
+  config/env.js          — Zorunlu env var'ları doğrular; eksik/geçersiz → crash
   db/
     pool.js              — pg-pool singleton
     migrations/          — node-pg-migrate dosyaları (001_, 002_, ... prefix)
@@ -65,14 +67,17 @@ src/
     auth.js              — JWT plugin, fastify.authenticate, fastify.requireRole(roles)
   routes/v1/             — Her klasör: index.js (handler) + schema.js (JSON Schema)
   services/              — İş mantığı; route handler'lardan çağrılır
-    eta/                 — ETA hesaplama (Distance Matrix + haversine fallback)
+    eta/                 — ETA hesaplama (Routes API + haversine fallback)
     notifications/       — Kanal adapter'ları (telegram, sms) + dispatcher
+    billing.service.js   — Şirket erişim/kota durumu (Redis cache'li)
   queues/                — BullMQ kuyrukları (eta, notifications), lazy singleton
-  workers/               — Kuyruk worker'ları; server process'i içinde çalışır
+  workers/               — Kuyruk worker'ları + periyodik bakım (terkedilmiş
+                           sefer, vade, saklama süresi); server process'i içinde
   utils/logger.js        — Pino instance
 admin/                   — React yönetim paneli (Vite; build → public/admin)
 public/
-  driver.html            — Sürücü web istemcisi (geolocation → konum ingest)
+  driver.html            — Sürücü web istemcisi (sefer başlat/bitir → konum ingest)
+  driver.js              — Sürücü istemci kodu (CSP: satır içi script yok)
   admin/                 — Panel build çıktısı (gitignore'da; npm run build:admin)
 test/
   helpers/app.js         — Test için buildApp() wrapper
@@ -85,7 +90,7 @@ test/
 ### Roller
 | Rol | Kapsam |
 |-----|--------|
-| `super_admin` | Platform sahibi; şirket yönetimi |
+| `super_admin` | Platform sahibi; şirket yönetimi + kiracı verisine salt-okunur destek erişimi (`?companyId=`) |
 | `company_admin` | Kendi şirketi dahilinde tam yetki |
 | `driver` | Konum gönderen sürücü istemcisi; kısıtlı kapsam |
 
@@ -96,7 +101,12 @@ test/
 - **API prefix:** Her endpoint `/api/v1/` ile başlar
 - **Validation:** Her route'un `schema: { body?, querystring?, params? }` olmalı
 - **Logger:** Pino — `console.log` bırakma
-- **Test:** Commit öncesi `npm test` yeşil olmalı
+- **Test:** Commit öncesi `npm test` yeşil olmalı. Testler ayrı bir
+  veritabanına (`servis_takip_test`) yazar — dev verisine dokunmaz.
+- **Sefer zorunluluğu:** Konum yalnızca aktif sefer varken kabul edilir
+  (`POST /api/v1/trips/start`). Bildirim dedup'ı `trip_notifications` ile.
+- **Faturalama kapısı:** Harcama üreten her yol (`eta/index.js`,
+  `notification.worker.js`, konum ingest) şirket durumunu kontrol etmeli.
 
 ## Geliştirme Fazları
 | Faz | İçerik | Durum |
@@ -107,21 +117,23 @@ test/
 | 4 | Bildirim servisi — Telegram Bot + Netgsm SMS | ✅ Tamamlandı |
 | 5 | Admin panel — React (Türkçe UI) | ✅ Tamamlandı |
 | 6 | Canlı harita + SSE takip sayfası | ✅ Tamamlandı |
-| 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | ✅ Tamamlandı |
-| 8 | Faturalama — manuel ödeme takibi (elden/IBAN, gateway yok) | ✅ Tamamlandı |
+| 7 | Sefer geçmişi + health endpoint'leri + pg_dump yedekleme | ✅ Tamamlandı — gerçek monitoring/alerting yok, sadece `/health` ve `/health/deep` |
+| 8 | Faturalama — manuel ödeme takibi (elden/IBAN, gateway yok) | ✅ Tamamlandı (Faz C ile genişletildi: kademeli askı, ödeme defteri, kota) |
 
 ## Pilot Öncesi Sertleştirme (Mimari Düzeltme Planı)
 | Faz | İçerik | Durum |
 |-----|--------|-------|
 | A | Sefer (trip) modeli — trips/trip_stops/trip_notifications, sürücü start/end, geçilen durak elemesi, terkedilmiş sefer toplayıcı | ✅ Tamamlandı |
-| B | ETA maliyeti — throttle + cache + sıradaki durak sorgusu + günlük bütçe | ⬜ Planlandı |
-| C | Gelir koruması — askıya alma pipeline'ı durdursun, ödeme geçmişi, kota | ⬜ Planlandı |
-| D | Güvenlik — rate limit, SSE ticket, CSP, token depolama | ⬜ Planlandı |
-| E | Veri bütünlüğü — bileşik FK, pool, retention, SSE shutdown | ⬜ Planlandı |
-| F | Test/ops — izolasyon testleri, CI, deploy yapılandırması, restore | ⬜ Planlandı |
-| G | Dokümantasyon dürüstlüğü | ⬜ Planlandı |
+| B | ETA maliyeti — Routes API, hibrit trafik tier, throttle, günlük bütçe | ✅ Tamamlandı |
+| C | Gelir koruması — kademeli askı, ödeme defteri, kota, oturum iptali | ✅ Tamamlandı |
+| D | Güvenlik — rate limit, SSE ticket, CSP, token ailesi, bellek içi oturum | ✅ Tamamlandı |
+| E | Veri bütünlüğü — bileşik FK, pool, retention, SSE shutdown, index bakımı | ✅ Tamamlandı |
+| F | Test/ops — izolasyon testleri, ayrı test DB, dry-run, CI, deploy, restore | ✅ Tamamlandı |
+| G | Dokümantasyon dürüstlüğü | ✅ Tamamlandı |
 
 Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
 
 ## Environment Variables
-`.env.example` dosyasına bak. `src/config/env.js` başlangıçta tüm zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.
+`.env.example` dosyasına bak. `src/config/env.js` başlangıçta zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Üretimde ek kontroller var: `CORS_ORIGIN` zorunlu ve localhost/`*` olamaz, `JWT_ACCESS_SECRET` en az 32 karakter ve örnek değer içeremez. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.
+
+`JWT_REFRESH_SECRET` **yoktur** — refresh token'lar JWT değil, opak rastgele değerlerdir ve DB'de SHA-256 hash'i saklanır.

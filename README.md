@@ -4,8 +4,8 @@
 
 ## How it works
 
-1. A driver opens the lightweight web driver page (`public/driver.html`) and shares live location.
-2. The backend computes each passenger's ETA — Google Maps Distance Matrix when an API key is configured, with a haversine fallback otherwise.
+1. A driver opens the lightweight web driver page (`public/driver.html`), starts a trip, and shares live location. Location is only accepted while a trip is active.
+2. The backend computes each passenger's ETA — Google Routes API (`computeRouteMatrix`) when an API key is configured, with a haversine fallback otherwise. Only stops the shuttle has not yet passed are priced, and requests are throttled per route.
 3. When the shuttle gets close, a notification job is queued and delivered over Telegram Bot API or Netgsm SMS.
 4. Company staff manage routes, vehicles, drivers and passengers from a React admin panel with a live map.
 
@@ -20,7 +20,7 @@
 | Notifications | Telegram Bot API, Netgsm SMS |
 | Admin UI | React + Vite (live map, companies, routes, vehicles, passengers) |
 | Logging | Pino structured JSON |
-| Hosting | Railway (staging + production, zero-downtime deploys) |
+| Hosting | Railway config in `railway.json` — **not yet deployed** (see `docs/SENIN-ADIMLARIN.md`) |
 
 ## Development
 

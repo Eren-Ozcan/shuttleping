@@ -1,4 +1,20 @@
-# Pilot Hazırlık ve Test Planı
+# ShuttlePing — Pilot Hazırlık ve Test Planı
+
+> **DURUM NOTU (2026-08-27).** Bu doküman 2026-08-27'deki kod incelemesiyle yazıldı ve
+> aynı gün mimari düzeltme planı (A–G fazları) uygulandı. Aşağıdaki **K-1..K-3 ve R-1..R-5
+> bulgularının tamamı kapatıldı**; T0/T1 backlog kalemlerinin çoğu da hayata geçti.
+> Güncel durum için `TODO.md`'ye bak — orada hangi bulgunun nasıl kapatıldığı tek tek yazılı.
+>
+> Bu dosyanın **hâlâ geçerli** olan kısmı: test matrisi (A/B/C/D/E/F/H/J/K/M suitleri) ve
+> go/no-go eşikleri. Onlar pilot günü izlenecek.
+>
+> Bu dosyada adı geçip **hâlâ var olmayan** dosyalar: `scripts/seed-demo.js`,
+> `scripts/demo-drive.js`, `scripts/reset-demo.js`, `scripts/drive-phone.js`,
+> `public/debug.html`, `public/track.html`, `test/helpers/fake-notify-server.js`.
+> Bunlar yazılmadı; komut örnekleri çalışmaz.
+>
+> Var olan ve kullanılabilir olanlar: `npm run backup`, `npm run restore`,
+> `NOTIFICATION_DRY_RUN` / `NOTIFICATION_TEST_CHAT_ID` (dry-run modu, T0.1 karşılığı).
 
 Bir şirkete sunum yapmak ve bir haftalık deneme (pilot) koşmak için gereken
 hazırlık. Bulguların tamamı `1e9b07f` üzerinde kod okunarak doğrulandı.

@@ -23,13 +23,35 @@ webhook'u backlog'da (`TODO.md`), istenirse yazılabilir.
 > öneriliyor — kablolama/test en sona bırakılabilir ama başvuru şimdiden
 > başlatılabilir.
 
-## 3. Google Maps API anahtarı (ETA hassasiyeti) ✅ Tamamlandı (2026-07-09)
+## 3. Google Maps API anahtarı (ETA hassasiyeti) ⚠️ Yeniden aksiyon gerekiyor
 Google Cloud projesi açıldı (Free Trial, ₺13.988 kredi, Ekim 2026'ya kadar
 geçerli), Distance Matrix API etkinleştirildi, key oluşturuldu ve sadece
 Distance Matrix API'ye kısıtlandı (Application restrictions: None,
 API restrictions: sadece Distance Matrix API). `.env`'e yazıldı, hem
 tekil curl testiyle hem lokal E2E testte gerçek trafik verisiyle
 (Sultanahmet → Taksim, 19 dk) doğrulandı.
+
+**Faz B ile değişti — şunları yapman gerekiyor:**
+
+1. **"Routes API"yi etkinleştir.** Kod artık legacy Distance Matrix yerine
+   Routes API `computeRouteMatrix` kullanıyor (Google, Distance Matrix'i
+   Legacy statüsüne aldı; JS karşılığı Şubat 2026'da deprecate edildi).
+   Cloud Console → APIs & Services → Library → "Routes API" → Enable.
+2. **Key kısıtlamasını güncelle.** API restrictions listesine Routes API'yi
+   ekle — aksi halde her çağrı 403 döner ve sistem sessizce haversine'e
+   düşer (bunu artık canlı haritadaki "kaba tahmin" uyarısından ve
+   `/health/deep` çıktısından görebilirsin).
+3. **Application restrictions hâlâ "None".** Sızan bir anahtar her yerden
+   kullanılabilir. Sunucu IP'si belli olunca (Adım 5, Railway) IP
+   kısıtlaması ekle.
+4. **Bütçe alarmı kur.** Cloud Console → Billing → Budgets & alerts.
+   `GOOGLE_DAILY_ELEMENT_BUDGET` (varsayılan 5000) uygulama tarafında
+   sigorta; bu ise Google tarafında ikinci savunma hattı.
+
+Fiyatlandırma notu (Ağustos 2026): `TRAFFIC_AWARE` = Compute Route Matrix
+**Pro** (~$10/1.000 element, ayda 5.000 ücretsiz), `TRAFFIC_UNAWARE` =
+**Essentials** (~$5/1.000, ayda 10.000 ücretsiz). Kod yakın durakları
+trafikli, uzakları trafiksiz soruyor; eşik `ETA_TRAFFIC_AWARE_MINUTES`.
 
 ## 4. Prod JWT secret'ları üret ✅ Tamamlandı (2026-07-09)
 Üretildi, Railway kurulumunda (Adım 5) environment variable olarak
