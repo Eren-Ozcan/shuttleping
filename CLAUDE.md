@@ -110,6 +110,17 @@ test/
 | 7 | Sefer geçmişi + monitoring + pg_dump yedekleme | ✅ Tamamlandı |
 | 8 | Faturalama — manuel ödeme takibi (elden/IBAN, gateway yok) | ✅ Tamamlandı |
 
+## Pilot Öncesi Sertleştirme (Mimari Düzeltme Planı)
+| Faz | İçerik | Durum |
+|-----|--------|-------|
+| A | Sefer (trip) modeli — trips/trip_stops/trip_notifications, sürücü start/end, geçilen durak elemesi, terkedilmiş sefer toplayıcı | ✅ Tamamlandı |
+| B | ETA maliyeti — throttle + cache + sıradaki durak sorgusu + günlük bütçe | ⬜ Planlandı |
+| C | Gelir koruması — askıya alma pipeline'ı durdursun, ödeme geçmişi, kota | ⬜ Planlandı |
+| D | Güvenlik — rate limit, SSE ticket, CSP, token depolama | ⬜ Planlandı |
+| E | Veri bütünlüğü — bileşik FK, pool, retention, SSE shutdown | ⬜ Planlandı |
+| F | Test/ops — izolasyon testleri, CI, deploy yapılandırması, restore | ⬜ Planlandı |
+| G | Dokümantasyon dürüstlüğü | ⬜ Planlandı |
+
 Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
 
 ## Environment Variables
