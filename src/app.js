@@ -19,6 +19,7 @@ import passengerRoutes from './routes/v1/passengers/index.js'
 import locationRoutes from './routes/v1/locations/index.js'
 import tripRoutes from './routes/v1/trips/index.js'
 import historyRoutes from './routes/v1/history/index.js'
+import { budgetKey } from './services/eta/distance.js'
 import { closeQueues } from './queues/index.js'
 
 /**
@@ -77,9 +78,21 @@ export async function buildApp(opts = {}) {
       checks.redis = 'down'
     }
 
+    // Google Maps günlük element kullanımı — bütçe aşıldıysa ETA kaba tahmine
+    // düşmüştür; servis ayakta olduğu için 503 değil, bayrak olarak raporlanır
+    let maps
+    if (checks.redis === 'ok' && env.GOOGLE_MAPS_API_KEY) {
+      const used = Number((await fastify.redis.get(budgetKey())) ?? 0)
+      maps = {
+        elementsToday: used,
+        budget: env.GOOGLE_DAILY_ELEMENT_BUDGET,
+        overBudget: used > env.GOOGLE_DAILY_ELEMENT_BUDGET,
+      }
+    }
+
     const healthy = Object.values(checks).every((s) => s === 'ok')
     reply.code(healthy ? 200 : 503)
-    return { status: healthy ? 'ok' : 'degraded', ...checks }
+    return { status: healthy ? 'ok' : 'degraded', ...checks, ...(maps ? { maps } : {}) }
   })
 
   // Statik dosyalar: public/driver.html (sürücü istemcisi) ve

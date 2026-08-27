@@ -122,13 +122,22 @@ export default function LiveMap() {
         {eta?.stops?.length > 0 && (
           <div className="eta-panel">
             <h3>Tahmini Varış</h3>
+            {eta.source === 'haversine' && (
+              <div className="eta-degraded">
+                ⚠️ Kaba tahmin — harita servisi kullanılamıyor
+              </div>
+            )}
             {eta.stops.map((s) => (
-              <div key={s.stopId} className="eta-row">
+              <div key={s.stopId} className={`eta-row${s.state === 'passed' ? ' eta-passed' : ''}`}>
                 <span>
                   {s.sequence}. {s.name}
                 </span>
                 <strong>
-                  {s.etaSeconds == null ? '—' : `${Math.max(Math.round(s.etaSeconds / 60), 1)} dk`}
+                  {s.state === 'passed'
+                    ? 'geçildi'
+                    : s.etaSeconds == null
+                      ? '—'
+                      : `${Math.max(Math.round(s.etaSeconds / 60), 1)} dk`}
                 </strong>
               </div>
             ))}
