@@ -149,7 +149,7 @@ export default async function passengerRoutes(fastify) {
 
       params.push(request.params.id, companyId)
       const { rows } = await fastify.db.query(
-        `UPDATE passengers SET ${sets.join(', ')}, updated_at = now()
+        `UPDATE passengers SET ${sets.join(', ')}
          WHERE id = $${params.length - 1} AND company_id = $${params.length}
          RETURNING ${passengerColumns()}`,
         params,

@@ -13,7 +13,8 @@ const TRIP_COLUMNS = `t.id, t.route_id AS "routeId", r.name AS "routeName",
 
 export default async function tripRoutes(fastify) {
   const driverOnly = [fastify.requireRole(['driver'])]
-  const adminOnly = [fastify.requireRole(['company_admin'])]
+  // Sefer geçmişi destek için super_admin'e de açık (E12)
+  const supportRead = [fastify.allowSupportRead(['company_admin'])]
 
   /**
    * POST /api/v1/trips/start
@@ -124,7 +125,7 @@ export default async function tripRoutes(fastify) {
    */
   fastify.get(
     '/',
-    { schema: listTripsSchema, onRequest: adminOnly },
+    { schema: listTripsSchema, onRequest: supportRead },
     async (request) => {
       const { routeId, status, from, to, limit } = request.query
       const params = [request.user.companyId]
@@ -166,7 +167,7 @@ export default async function tripRoutes(fastify) {
    */
   fastify.get(
     '/:id',
-    { schema: getTripSchema, onRequest: adminOnly },
+    { schema: getTripSchema, onRequest: supportRead },
     async (request, reply) => {
       const companyId = request.user.companyId
 

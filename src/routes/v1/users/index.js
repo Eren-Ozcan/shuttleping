@@ -82,7 +82,7 @@ export default async function userRoutes(fastify) {
 
       params.push(request.params.id, request.user.companyId)
       const { rows } = await fastify.db.query(
-        `UPDATE users SET ${sets.join(', ')}, updated_at = now()
+        `UPDATE users SET ${sets.join(', ')}
          WHERE id = $${params.length - 1} AND company_id = $${params.length}
          RETURNING ${USER_COLUMNS}`,
         params,

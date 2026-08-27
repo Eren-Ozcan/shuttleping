@@ -10,7 +10,7 @@ export default async function historyRoutes(fastify) {
     '/locations/:routeId',
     {
       schema: locationHistorySchema,
-      onRequest: [fastify.requireRole(['company_admin'])],
+      onRequest: [fastify.allowSupportRead(['company_admin'])],
     },
     async (request) => {
       const { routeId } = request.params
@@ -48,7 +48,7 @@ export default async function historyRoutes(fastify) {
     '/notifications',
     {
       schema: notificationHistorySchema,
-      onRequest: [fastify.requireRole(['company_admin'])],
+      onRequest: [fastify.allowSupportRead(['company_admin'])],
     },
     async (request) => {
       const { from, to, passengerId, status, limit } = request.query

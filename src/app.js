@@ -21,6 +21,7 @@ import locationRoutes from './routes/v1/locations/index.js'
 import tripRoutes from './routes/v1/trips/index.js'
 import historyRoutes from './routes/v1/history/index.js'
 import { budgetKey } from './services/eta/distance.js'
+import { EmptyUpdateError } from './utils/sql.js'
 import { closeQueues } from './queues/index.js'
 
 /**
@@ -134,6 +135,18 @@ export async function buildApp(opts = {}) {
       return reply.notFound(`${request.method} ${request.url} bulunamadı`)
     })
   }
+
+  // buildUpdate boş gövdede fırlatır (E10) — 500 yerine 400 dönmeli
+  fastify.setErrorHandler((error, request, reply) => {
+    if (error instanceof EmptyUpdateError) {
+      return reply.badRequest(error.message)
+    }
+    if (error.statusCode && error.statusCode < 500) {
+      return reply.send(error)
+    }
+    request.log.error({ err: error }, 'İşlenmemiş hata')
+    return reply.internalServerError('Beklenmeyen bir hata oluştu')
+  })
 
   // Route handler'ları lazy kuyruk oluşturduysa bağlantıları app ile kapat
   fastify.addHook('onClose', () => closeQueues())

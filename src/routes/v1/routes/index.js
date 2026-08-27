@@ -13,6 +13,9 @@ const STOP_COLUMNS = `id, route_id AS "routeId", name, lat, lng, sequence,
 
 export default async function routeRoutes(fastify) {
   const adminOnly = [fastify.requireRole(['company_admin'])]
+  // Salt-okunur uçlar super_admin'e de açık (E12): destek için müşterinin
+  // verisini üründen görebilmek gerekiyor. Yazma yolları kapalı kalır.
+  const supportRead = [fastify.allowSupportRead(['company_admin'])]
 
   /** Güzergahın bu şirkete ait olduğunu doğrular; değilse null döner. */
   async function findRoute(routeId, companyId) {
@@ -29,7 +32,7 @@ export default async function routeRoutes(fastify) {
    */
   fastify.get(
     '/',
-    { schema: listRoutesSchema, onRequest: adminOnly },
+    { schema: listRoutesSchema, onRequest: supportRead },
     async (request) => {
       const { active } = request.query
       const params = [request.user.companyId]
@@ -109,7 +112,7 @@ export default async function routeRoutes(fastify) {
 
       params.push(request.params.id, companyId)
       const { rows } = await fastify.db.query(
-        `UPDATE routes SET ${sets.join(', ')}, updated_at = now()
+        `UPDATE routes SET ${sets.join(', ')}
          WHERE id = $${params.length - 1} AND company_id = $${params.length}
          RETURNING id, name, driver_id AS "driverId", vehicle_id AS "vehicleId",
                    is_active AS "isActive", created_at AS "createdAt"`,
@@ -127,7 +130,7 @@ export default async function routeRoutes(fastify) {
    */
   fastify.get(
     '/:id/stops',
-    { schema: listStopsSchema, onRequest: adminOnly },
+    { schema: listStopsSchema, onRequest: supportRead },
     async (request, reply) => {
       const companyId = request.user.companyId
       if (!(await findRoute(request.params.id, companyId))) {
@@ -195,7 +198,7 @@ export default async function routeRoutes(fastify) {
 
       try {
         const { rows } = await fastify.db.query(
-          `UPDATE stops SET ${sets.join(', ')}, updated_at = now()
+          `UPDATE stops SET ${sets.join(', ')}
            WHERE id = $${params.length - 2} AND route_id = $${params.length - 1}
              AND company_id = $${params.length}
            RETURNING ${STOP_COLUMNS}`,

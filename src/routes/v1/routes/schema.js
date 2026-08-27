@@ -1,3 +1,7 @@
+// super_admin destek erişimi için (E12): hangi kiracının verisi okunacak.
+// Şemalarda tanımlı olmalı, aksi halde removeAdditional bunu düşürür.
+const supportCompanyId = { companyId: { type: 'string', format: 'uuid' } }
+
 const uuidParam = {
   type: 'object',
   required: ['id'],
@@ -23,6 +27,7 @@ export const listRoutesSchema = {
     additionalProperties: false,
     properties: {
       active: { type: 'boolean' },
+      ...supportCompanyId,
     },
   },
 }
@@ -56,6 +61,11 @@ export const updateRouteSchema = {
 
 export const listStopsSchema = {
   params: uuidParam,
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { ...supportCompanyId },
+  },
 }
 
 export const createStopSchema = {

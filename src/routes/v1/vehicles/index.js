@@ -72,7 +72,7 @@ export default async function vehicleRoutes(fastify) {
 
       try {
         const { rows } = await fastify.db.query(
-          `UPDATE vehicles SET ${sets.join(', ')}, updated_at = now()
+          `UPDATE vehicles SET ${sets.join(', ')}
            WHERE id = $${params.length - 1} AND company_id = $${params.length}
            RETURNING ${VEHICLE_COLUMNS}`,
           params,

@@ -108,8 +108,7 @@ export default async function companyRoutes(fastify) {
             `UPDATE companies
              SET payment_status = 'active',
                  last_payment_date = now(),
-                 next_due_date = COALESCE($2, now() + interval '30 days'),
-                 updated_at = now()
+                 next_due_date = COALESCE($2, now() + interval '30 days')
              WHERE id = $1
              RETURNING ${COMPANY_COLUMNS}`,
             [companyId, nextDueDate ?? null],
@@ -134,7 +133,7 @@ export default async function companyRoutes(fastify) {
         } else {
           const { rows } = await client.query(
             `UPDATE companies
-             SET payment_status = $2, updated_at = now()
+             SET payment_status = $2
              WHERE id = $1
              RETURNING ${COMPANY_COLUMNS}`,
             [companyId, paymentStatus],
@@ -183,7 +182,7 @@ export default async function companyRoutes(fastify) {
 
       params.push(request.params.id)
       const { rows } = await fastify.db.query(
-        `UPDATE companies SET ${sets.join(', ')}, updated_at = now()
+        `UPDATE companies SET ${sets.join(', ')}
          WHERE id = $${params.length}
          RETURNING ${COMPANY_COLUMNS}`,
         params,
