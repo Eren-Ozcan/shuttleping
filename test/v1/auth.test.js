@@ -1,6 +1,8 @@
-import { describe, it, expect, afterAll } from 'vitest'
-import { getTestApp, closeTestApp } from '../helpers/app.js'
+import { describe, it, expect, afterAll, beforeEach } from 'vitest'
+import { getTestApp, closeTestApp, clearRateLimits } from '../helpers/app.js'
 
+// Login rate limit'i dakikada 5 — her test taze sayaçla başlamalı
+beforeEach(clearRateLimits)
 afterAll(closeTestApp)
 
 describe('POST /api/v1/auth/login', () => {
@@ -56,14 +58,36 @@ describe('POST /api/v1/auth/refresh', () => {
   })
 })
 
+describe('login rate limit (D1)', () => {
+  it('dakikada 5 denemeden sonra 429 döner', async () => {
+    const app = await getTestApp()
+    const attempt = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email: 'brute@test.com', password: 'wrongpassword' },
+      })
+
+    const codes = []
+    for (let i = 0; i < 6; i++) codes.push((await attempt()).statusCode)
+
+    expect(codes.slice(0, 5)).toEqual([401, 401, 401, 401, 401])
+    expect(codes[5]).toBe(429)
+  })
+})
+
 describe('POST /api/v1/auth/logout', () => {
-  it('access token olmadan 401 döner', async () => {
+  // D10: access token gerektirmez — süresi dolmuş oturumda da kullanıcı
+  // kendi refresh token'ını iptal edebilmeli. Yetki cookie'nin kendisidir.
+  it('access token olmadan da başarılı olur ve cookie temizlenir', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/logout',
     })
-    expect(res.statusCode).toBe(401)
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ success: true })
+    expect(res.headers['set-cookie']).toBeDefined()
   })
 })
 

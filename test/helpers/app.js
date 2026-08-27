@@ -22,6 +22,17 @@ export async function closeTestApp() {
 }
 
 /**
+ * Rate limit sayaçlarını sıfırlar. Sayaçlar Redis'te yaşadığı için test
+ * dosyaları ve ardışık koşular birbirinin kotasını tüketir; limit davranışını
+ * sınayan testler dışında her testin taze başlaması gerekir.
+ */
+export async function clearRateLimits() {
+  const app = await getTestApp()
+  const keys = await app.redis.keys('rl:*')
+  if (keys.length) await app.redis.del(...keys)
+}
+
+/**
  * Verilen rolle imzalı access token içeren Authorization header'ı üretir.
  * DB'ye kullanıcı yazmaz — auth/rol/validation seviyesi testler için yeterli.
  */

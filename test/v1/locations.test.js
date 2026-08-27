@@ -72,23 +72,64 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
 })
 
 describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
-  it('token olmadan 401 döner', async () => {
+  it('bilet olmadan 400 döner (bilet zorunlu)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream',
     })
-    expect(res.statusCode).toBe(401)
+    expect(res.statusCode).toBe(400)
   })
 
-  it('driver token\'ıyla 403 döner (sadece company_admin)', async () => {
+  it('access token bilet olarak kabul edilmez', async () => {
     const app = await getTestApp()
-    const { authorization } = await authHeader('driver')
+    const { authorization } = await authHeader('company_admin')
     const token = authorization.replace('Bearer ', '')
     const res = await app.inject({
       method: 'GET',
-      url: `/api/v1/locations/00000000-0000-4000-8000-000000000001/stream?token=${token}`,
+      url: `/api/v1/locations/00000000-0000-4000-8000-000000000001/stream?ticket=${token}`,
+    })
+    // JWT bilet formatına uymaz (maxLength) — şema seviyesinde reddedilir
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('uydurma bilet 401 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/00000000-0000-4000-8000-000000000001/stream?ticket=${'a'.repeat(64)}`,
+    })
+    expect(res.statusCode).toBe(401)
+  })
+})
+
+describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
+  it('token olmadan 401 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream-ticket',
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('driver rolüyle 403 döner (sadece company_admin)', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream-ticket',
+      headers: await authHeader('driver'),
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('başka şirketin güzergahı için 404 döner', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream-ticket',
+      headers: await authHeader('company_admin'),
+    })
+    expect(res.statusCode).toBe(404)
   })
 })
