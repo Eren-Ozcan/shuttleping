@@ -27,14 +27,19 @@ export const getLocationSchema = {
 
 export const getEtaSchema = getLocationSchema
 
+export const streamTicketSchema = getLocationSchema
+
 export const streamSchema = {
   params: getLocationSchema.params,
   querystring: {
     type: 'object',
+    required: ['ticket'],
     additionalProperties: false,
     properties: {
-      // EventSource header taşıyamadığı için token query ile de gelebilir
-      token: { type: 'string' },
+      // EventSource header taşıyamaz. Access token yerine tek kullanımlık,
+      // kısa ömürlü bilet gönderilir — access token URL'e, proxy loglarına
+      // ve Referer'a hiç girmez (D2).
+      ticket: { type: 'string', minLength: 16, maxLength: 128 },
     },
   },
 }
