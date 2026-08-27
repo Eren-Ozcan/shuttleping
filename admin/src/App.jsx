@@ -7,6 +7,7 @@ import Vehicles from './pages/Vehicles.jsx'
 import Users from './pages/Users.jsx'
 import Passengers from './pages/Passengers.jsx'
 import LiveMap from './pages/LiveMap.jsx'
+import Trips from './pages/Trips.jsx'
 import Notifications from './pages/Notifications.jsx'
 import Companies from './pages/Companies.jsx'
 
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/kullanicilar" element={<Users />} />
         <Route path="/yolcular" element={<Passengers />} />
         <Route path="/harita" element={<LiveMap />} />
+        <Route path="/seferler" element={<Trips />} />
         <Route path="/bildirimler" element={<Notifications />} />
         <Route path="/sirketler" element={<Companies />} />
       </Route>

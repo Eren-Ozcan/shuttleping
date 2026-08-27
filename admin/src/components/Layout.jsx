@@ -4,6 +4,7 @@ import { getUser, logout } from '../api.js'
 const COMPANY_NAV = [
   { to: '/guzergahlar', label: 'Güzergahlar' },
   { to: '/harita', label: 'Canlı Harita' },
+  { to: '/seferler', label: 'Seferler' },
   { to: '/yolcular', label: 'Yolcular' },
   { to: '/araclar', label: 'Araçlar' },
   { to: '/kullanicilar', label: 'Kullanıcılar' },
