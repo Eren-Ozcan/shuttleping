@@ -175,3 +175,75 @@ describe('notify (dispatcher)', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('api.telegram.org')
   })
 })
+
+/**
+ * Faz F3 — prova modu. Bugüne kadar bildirim akışını denemek, gerçek yolcuya
+ * gerçek mesaj göndermek demekti.
+ */
+describe('dry-run', () => {
+  const DRY_KEYS = ['NOTIFICATION_DRY_RUN', 'NOTIFICATION_TEST_CHAT_ID']
+  const savedDry = {}
+
+  beforeEach(() => {
+    for (const key of DRY_KEYS) savedDry[key] = env[key]
+    env.TELEGRAM_BOT_TOKEN = 'test-token'
+  })
+  afterEach(() => {
+    for (const key of DRY_KEYS) env[key] = savedDry[key]
+  })
+
+  it('global bayrak açıkken gönderim yapılmaz', async () => {
+    env.NOTIFICATION_DRY_RUN = true
+    env.NOTIFICATION_TEST_CHAT_ID = null
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await notify(
+      { ...passenger, notification_channel: 'telegram' },
+      'test',
+    )
+
+    expect(result).toEqual({ ok: true, dryRun: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('şirket bazında bayrak da gönderimi durdurur', async () => {
+    env.NOTIFICATION_DRY_RUN = false
+    env.NOTIFICATION_TEST_CHAT_ID = null
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await notify(
+      { ...passenger, notification_channel: 'sms' },
+      'test',
+      { dryRun: true },
+    )
+
+    expect(result).toEqual({ ok: true, dryRun: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('test chat id verilirse mesaj o hesaba yönlendirilir', async () => {
+    env.NOTIFICATION_DRY_RUN = true
+    env.NOTIFICATION_TEST_CHAT_ID = '99999'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await notify(
+      { ...passenger, notification_channel: 'sms', full_name: 'Ayşe' },
+      'Servisiniz 5 dk sonra',
+      {},
+    )
+
+    expect(result).toMatchObject({ ok: true, dryRun: true })
+    // SMS tercihli yolcu bile test Telegram hesabına düşer
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.chat_id).toBe('99999')
+    expect(body.text).toContain('DRY-RUN')
+    expect(body.text).toContain('Ayşe')
+  })
+})

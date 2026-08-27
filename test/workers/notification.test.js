@@ -88,6 +88,29 @@ describe('handleNotificationJob', () => {
     expect(result).toMatchObject({ ok: false, error: 'unknown_channel' })
   })
 
+  it('prova modundaki şirketin kaydı dry_run olarak loglanır (F3)', async () => {
+    const db = fakeDb({
+      id: jobData.passengerId,
+      company_id: jobData.companyId,
+      notification_channel: 'telegram',
+      telegram_chat_id: '123',
+    })
+    const dryRunCompany = async () => ({
+      paymentStatus: 'active',
+      isActive: true,
+      maxPassengers: null,
+      dryRun: true,
+    })
+
+    const result = await handleNotificationJob({ db, checkAccess: dryRunCompany }, jobData)
+
+    expect(result).toMatchObject({ ok: true, dryRun: true })
+    const insert = db.queries.find((q) => q.text.includes('INSERT INTO notification_logs'))
+    // Denetim kaydında prova gönderimi canlıdan ayrılmalı
+    expect(insert.params).toContain('dry_run')
+    expect(insert.params).not.toContain('sent')
+  })
+
   it('askıya alınmış şirkette gönderim yapılmaz (C1)', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
