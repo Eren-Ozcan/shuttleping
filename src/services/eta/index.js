@@ -1,30 +1,68 @@
 /**
- * ETA motoru çekirdeği (Faz 3 + Faz A sefer modeli).
+ * ETA motoru çekirdeği (Faz 3 + Faz A sefer modeli + Faz B maliyet kontrolü).
  *
  * Akış: konum ingest → eta kuyruğu → computeEtaForRoute
  *   1. Aracın son konumu Redis'ten okunur (yoksa iş atlanır)
  *   2. Aktif seferin durakları (trip_stops snapshot) okunur
- *   3. Duraklara ETA hesaplanır (Distance Matrix / fallback), Redis'e yazılır
- *   4. Aracın geçtiği duraklar trip_stops.state = 'passed' işaretlenir
+ *   3. Aracın geçtiği duraklar trip_stops.state = 'passed' işaretlenir
+ *   4. ETA hesaplanır; Google'a sorulup sorulmayacağına adaptif throttle ve
+ *      hareket eşiği karar verir, aksi halde önceki sonuç yeniden kullanılır
  *   5. ETA'sı eşiğin altına inen, henüz bildirilmemiş yolcular için bildirim
- *      job'ı kuyruğa atılır — dedup artık trip_notifications tablosuyla
- *      (sefere bağlı, kalıcı; Redis flush'a dayanıklı, aynı gün ikinci sefer
- *      yeni trip_id ile normal bildirir)
+ *      job'ı kuyruğa atılır — dedup trip_notifications tablosuyla (sefere
+ *      bağlı, kalıcı; Redis flush'a dayanıklı, aynı gün ikinci sefer yeni
+ *      trip_id ile normal bildirir)
  *
  * Bağımlılıklar parametreyle enjekte edilir; testler sahte getEta /
  * enqueueNotification geçirir, worker gerçeklerini kullanır.
  */
 import { env } from '../../config/env.js'
-import { getEtaSeconds, haversineMeters } from './distance.js'
+import { getEtaSeconds, haversineMeters, fallbackEtaSeconds } from './distance.js'
 import { enqueueNotificationJob } from '../../queues/index.js'
 
 export const locationKey = (companyId, routeId) => `loc:${companyId}:${routeId}`
 export const etaKey = (companyId, routeId) => `eta:${companyId}:${routeId}`
-// Faz B — rota başına ETA hesap throttle anahtarı
+// Faz B — rota başına Google sorgu throttle anahtarı
 export const etaCalcKey = (routeId) => `etacalc:${routeId}`
 
 // ETA sonucu da konum gibi bayatlayınca silinsin
 const ETA_TTL_SECONDS = 300
+// Önceki Google sonucunun yeniden kullanılabileceği azami yaş
+const REUSE_MAX_AGE_MS = 300_000
+
+function parseJson(raw) {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Google'a yeniden sorulup sorulmayacağına karar verir.
+ * - Araç kayda değer hareket etmediyse önceki sonuç yeniden kullanılır
+ * - Aksi halde adaptif throttle: yakında durak varsa sık, yoksa seyrek
+ * @returns {Promise<boolean>}
+ */
+async function shouldQueryProvider(redis, routeId, { origin, previous, nearestSeconds }) {
+  const fresh =
+    previous &&
+    previous.origin &&
+    Date.now() - (previous.computedAt ?? 0) < REUSE_MAX_AGE_MS &&
+    previous.source !== 'haversine'
+
+  if (fresh && haversineMeters(origin, previous.origin) < env.ETA_MIN_MOVE_METERS) {
+    return false // araç neredeyse duruyor — önceki ETA hâlâ geçerli
+  }
+
+  const ttl =
+    nearestSeconds != null && nearestSeconds <= env.ETA_TRAFFIC_AWARE_MINUTES * 60
+      ? env.ETA_THROTTLE_NEAR_SECONDS
+      : env.ETA_THROTTLE_FAR_SECONDS
+
+  const claimed = await redis.set(etaCalcKey(routeId), '1', 'EX', ttl, 'NX')
+  return Boolean(claimed)
+}
 
 export async function computeEtaForRoute(
   {
@@ -36,9 +74,8 @@ export async function computeEtaForRoute(
   },
   { companyId, routeId, tripId },
 ) {
-  const rawLocation = await redis.get(locationKey(companyId, routeId))
-  if (!rawLocation) return { skipped: 'no_location' }
-  const location = JSON.parse(rawLocation)
+  const location = parseJson(await redis.get(locationKey(companyId, routeId)))
+  if (!location) return { skipped: 'no_location' }
 
   // tripId job payload'ından gelmezse (eski job'lar) aktif seferi bul
   if (!tripId) {
@@ -62,29 +99,11 @@ export async function computeEtaForRoute(
   if (!stops.length) return { skipped: 'no_stops' }
 
   const origin = { lat: location.lat, lng: location.lng }
-  const etaSeconds = await getEta(origin, stops)
-
-  await redis.set(
-    etaKey(companyId, routeId),
-    JSON.stringify({
-      ts: Date.now(),
-      tripId,
-      stops: stops.map((stop, i) => ({
-        stopId: stop.id,
-        name: stop.name,
-        sequence: stop.sequence,
-        state: stop.state,
-        etaSeconds: etaSeconds[i] ?? null,
-      })),
-    }),
-    'EX',
-    ETA_TTL_SECONDS,
-  )
 
   // ── Geçilen durak elemesi ────────────────────────────────────────────────
   // En yakın durağın sırasından önceki tüm duraklar geçilmiş sayılır; en yakın
-  // durak da yarıçap içindeyse geçilmiş işaretlenir. Böylece Faz B'de bu
-  // duraklara Distance Matrix sorgusu hiç gitmez ve geç kalmış bildirim önlenir.
+  // durak da yarıçap içindeyse geçilmiş işaretlenir. Böylece bu duraklara
+  // sağlayıcı sorgusu hiç gitmez ve geç kalmış bildirim önlenir.
   const distances = stops.map((s) => haversineMeters(origin, s))
   let nearestIdx = 0
   for (let i = 1; i < distances.length; i++) {
@@ -105,6 +124,73 @@ export async function computeEtaForRoute(
     )
   }
   const passedSet = new Set(passedStopIds)
+  const isPending = (stop) => !passedSet.has(stop.id) && stop.state !== 'passed'
+
+  // ── ETA: sağlayıcı sorgusu ya da önceki sonucun yeniden kullanımı ────────
+  // Yalnızca geçilmemiş duraklar sorulur — geçilen durak maliyet üretmez.
+  const pending = stops.map((stop, i) => ({ stop, i })).filter(({ stop }) => isPending(stop))
+  const previous = parseJson(await redis.get(etaKey(companyId, routeId)))
+  const haversine = fallbackEtaSeconds(origin, stops)
+  const nearestPendingSeconds = pending.length
+    ? Math.min(...pending.map(({ i }) => haversine[i]))
+    : null
+
+  const etaSeconds = [...haversine]
+  let source = 'haversine'
+
+  const query =
+    pending.length > 0 &&
+    (await shouldQueryProvider(redis, routeId, {
+      origin,
+      previous,
+      nearestSeconds: nearestPendingSeconds,
+    }))
+
+  if (query) {
+    const result = await getEta(
+      origin,
+      pending.map(({ stop }) => ({ lat: stop.lat, lng: stop.lng })),
+      { redis },
+    )
+    pending.forEach(({ i }, k) => {
+      if (result.seconds[k] != null) etaSeconds[i] = result.seconds[k]
+    })
+    source = result.source
+  } else if (previous?.stops?.length) {
+    // Throttle/hareket eşiği sağlayıcıyı engelledi — önceki sonucu olduğu gibi
+    // kullan (çürütme yapılmaz: erken bildirim riski yaratır)
+    const bySid = new Map(previous.stops.map((s) => [s.stopId, s.etaSeconds]))
+    let reused = 0
+    for (let i = 0; i < stops.length; i++) {
+      const prev = bySid.get(stops[i].id)
+      if (prev != null) {
+        etaSeconds[i] = prev
+        reused++
+      }
+    }
+    if (reused) source = 'cached'
+  }
+
+  await redis.set(
+    etaKey(companyId, routeId),
+    JSON.stringify({
+      ts: Date.now(),
+      tripId,
+      source,
+      // Sağlayıcıya en son sorulduğu an ve konum — yeniden kullanım kararı için
+      computedAt: query ? Date.now() : (previous?.computedAt ?? Date.now()),
+      origin: query ? origin : (previous?.origin ?? origin),
+      stops: stops.map((stop, i) => ({
+        stopId: stop.id,
+        name: stop.name,
+        sequence: stop.sequence,
+        state: passedSet.has(stop.id) ? 'passed' : stop.state,
+        etaSeconds: etaSeconds[i] ?? null,
+      })),
+    }),
+    'EX',
+    ETA_TTL_SECONDS,
+  )
 
   const { rows: passengers } = await db.query(
     `SELECT p.id, p.stop_id, p.notify_before_minutes, s.name AS stop_name
@@ -121,9 +207,7 @@ export async function computeEtaForRoute(
     if (seconds == null) continue
 
     // Araç bu durağı geçtiyse bildirim anlamsız
-    if (passedSet.has(passenger.stop_id) || stops[stopIndex].state === 'passed') {
-      continue
-    }
+    if (!isPending(stops[stopIndex])) continue
 
     const etaMinutes = Math.max(Math.round(seconds / 60), 1)
     if (etaMinutes > passenger.notify_before_minutes) continue
@@ -165,5 +249,5 @@ export async function computeEtaForRoute(
     notified++
   }
 
-  return { ok: true, tripId, stopCount: stops.length, notified }
+  return { ok: true, tripId, stopCount: stops.length, source, notified }
 }
