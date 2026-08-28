@@ -1,19 +1,19 @@
 /**
- * ETA motoru çekirdeği (Faz 3 + Faz A sefer modeli + Faz B maliyet kontrolü).
+ * ETA engine core (Phase 3 + Phase A trip model + Phase B cost control).
  *
- * Akış: konum ingest → eta kuyruğu → computeEtaForRoute
- *   1. Aracın son konumu Redis'ten okunur (yoksa iş atlanır)
- *   2. Aktif seferin durakları (trip_stops snapshot) okunur
- *   3. Aracın geçtiği duraklar trip_stops.state = 'passed' işaretlenir
- *   4. ETA hesaplanır; Google'a sorulup sorulmayacağına adaptif throttle ve
- *      hareket eşiği karar verir, aksi halde önceki sonuç yeniden kullanılır
- *   5. ETA'sı eşiğin altına inen, henüz bildirilmemiş yolcular için bildirim
- *      job'ı kuyruğa atılır — dedup trip_notifications tablosuyla (sefere
- *      bağlı, kalıcı; Redis flush'a dayanıklı, aynı gün ikinci sefer yeni
- *      trip_id ile normal bildirir)
+ * Flow: location ingest -> eta queue -> computeEtaForRoute
+ *   1. The vehicle's last location is read from Redis (skip the job if absent)
+ *   2. The active trip's stops (trip_stops snapshot) are read
+ *   3. Stops the vehicle has passed are marked trip_stops.state = 'passed'
+ *   4. ETA is computed; adaptive throttle and a movement threshold decide
+ *      whether to query Google, otherwise the previous result is reused
+ *   5. For passengers whose ETA drops below the threshold and who have not yet
+ *      been notified, a notification job is enqueued — dedup via the
+ *      trip_notifications table (trip-scoped, persistent; survives a Redis
+ *      flush, a second trip the same day notifies normally with a new trip_id)
  *
- * Bağımlılıklar parametreyle enjekte edilir; testler sahte getEta /
- * enqueueNotification geçirir, worker gerçeklerini kullanır.
+ * Dependencies are injected via parameters; tests pass fake getEta /
+ * enqueueNotification, the worker passes the real ones.
  */
 import { env } from '../../config/env.js'
 import { getEtaSeconds, haversineMeters, fallbackEtaSeconds } from './distance.js'
@@ -22,12 +22,12 @@ import { getCompanyAccess, canUseEtaProvider, canNotify } from '../billing.servi
 
 export const locationKey = (companyId, routeId) => `loc:${companyId}:${routeId}`
 export const etaKey = (companyId, routeId) => `eta:${companyId}:${routeId}`
-// Faz B — rota başına Google sorgu throttle anahtarı
+// Phase B — per-route Google query throttle key
 export const etaCalcKey = (routeId) => `etacalc:${routeId}`
 
-// ETA sonucu da konum gibi bayatlayınca silinsin
+// The ETA result, like the location, is deleted once it goes stale
 const ETA_TTL_SECONDS = 300
-// Önceki Google sonucunun yeniden kullanılabileceği azami yaş
+// Maximum age at which a previous Google result may be reused
 const REUSE_MAX_AGE_MS = 300_000
 
 function parseJson(raw) {
@@ -40,9 +40,9 @@ function parseJson(raw) {
 }
 
 /**
- * Google'a yeniden sorulup sorulmayacağına karar verir.
- * - Araç kayda değer hareket etmediyse önceki sonuç yeniden kullanılır
- * - Aksi halde adaptif throttle: yakında durak varsa sık, yoksa seyrek
+ * Decides whether to query Google again.
+ * - If the vehicle has not moved meaningfully, the previous result is reused
+ * - Otherwise adaptive throttle: frequent if a stop is near, sparse if not
  * @returns {Promise<boolean>}
  */
 async function shouldQueryProvider(redis, routeId, { origin, previous, nearestSeconds }) {
@@ -53,7 +53,7 @@ async function shouldQueryProvider(redis, routeId, { origin, previous, nearestSe
     previous.source !== 'haversine'
 
   if (fresh && haversineMeters(origin, previous.origin) < env.ETA_MIN_MOVE_METERS) {
-    return false // araç neredeyse duruyor — önceki ETA hâlâ geçerli
+    return false // vehicle is barely moving — the previous ETA still holds
   }
 
   const ttl =
@@ -78,7 +78,7 @@ export async function computeEtaForRoute(
   const location = parseJson(await redis.get(locationKey(companyId, routeId)))
   if (!location) return { skipped: 'no_location' }
 
-  // tripId job payload'ından gelmezse (eski job'lar) aktif seferi bul
+  // If tripId is not in the job payload (older jobs), find the active trip
   if (!tripId) {
     const { rows } = await db.query(
       `SELECT id FROM trips
@@ -101,10 +101,10 @@ export async function computeEtaForRoute(
 
   const origin = { lat: location.lat, lng: location.lng }
 
-  // ── Geçilen durak elemesi ────────────────────────────────────────────────
-  // En yakın durağın sırasından önceki tüm duraklar geçilmiş sayılır; en yakın
-  // durak da yarıçap içindeyse geçilmiş işaretlenir. Böylece bu duraklara
-  // sağlayıcı sorgusu hiç gitmez ve geç kalmış bildirim önlenir.
+  // ── Passed-stop elimination ─────────────────────────────────────────────
+  // Every stop before the nearest one counts as passed; the nearest stop is
+  // marked passed too if it is within the radius. This way no provider query
+  // is ever sent for those stops and a late notification is avoided.
   const distances = stops.map((s) => haversineMeters(origin, s))
   let nearestIdx = 0
   for (let i = 1; i < distances.length; i++) {
@@ -127,8 +127,8 @@ export async function computeEtaForRoute(
   const passedSet = new Set(passedStopIds)
   const isPending = (stop) => !passedSet.has(stop.id) && stop.state !== 'passed'
 
-  // ── ETA: sağlayıcı sorgusu ya da önceki sonucun yeniden kullanımı ────────
-  // Yalnızca geçilmemiş duraklar sorulur — geçilen durak maliyet üretmez.
+  // ── ETA: provider query or reuse of the previous result ─────────────────
+  // Only pending stops are queried — a passed stop generates no cost.
   const pending = stops.map((stop, i) => ({ stop, i })).filter(({ stop }) => isPending(stop))
   const previous = parseJson(await redis.get(etaKey(companyId, routeId)))
   const haversine = fallbackEtaSeconds(origin, stops)
@@ -139,8 +139,8 @@ export async function computeEtaForRoute(
   const etaSeconds = [...haversine]
   let source = 'haversine'
 
-  // Faturalama kapısı (C1): ödemesi gecikmiş şirket için faturalı sağlayıcı
-  // çağrısı yapılmaz — askıya alma harcamayı gerçekten durdurmalı
+  // Billing gate (C1): no billed provider call for an overdue company —
+  // suspension must actually stop the spending
   const access = await getCompanyAccess(companyId, redis)
   const query =
     pending.length > 0 &&
@@ -162,8 +162,8 @@ export async function computeEtaForRoute(
     })
     source = result.source
   } else if (previous?.stops?.length) {
-    // Throttle/hareket eşiği sağlayıcıyı engelledi — önceki sonucu olduğu gibi
-    // kullan (çürütme yapılmaz: erken bildirim riski yaratır)
+    // Throttle / movement threshold blocked the provider — reuse the previous
+    // result as-is (no decay: it would create a risk of an early notification)
     const bySid = new Map(previous.stops.map((s) => [s.stopId, s.etaSeconds]))
     let reused = 0
     for (let i = 0; i < stops.length; i++) {
@@ -182,7 +182,7 @@ export async function computeEtaForRoute(
       ts: Date.now(),
       tripId,
       source,
-      // Sağlayıcıya en son sorulduğu an ve konum — yeniden kullanım kararı için
+      // When and where the provider was last queried — for the reuse decision
       computedAt: query ? Date.now() : (previous?.computedAt ?? Date.now()),
       origin: query ? origin : (previous?.origin ?? origin),
       stops: stops.map((stop, i) => ({
@@ -197,8 +197,8 @@ export async function computeEtaForRoute(
     ETA_TTL_SECONDS,
   )
 
-  // Askıya alınmış şirkette bildirim üretilmez; ETA yine yazıldı, panel
-  // açıksa harita çalışmaya devam eder
+  // No notification is produced for a suspended company; the ETA was still
+  // written, so the map keeps working if the panel is open
   if (!canNotify(access)) {
     return { ok: true, tripId, stopCount: stops.length, source, notified: 0, billingBlocked: true }
   }
@@ -217,13 +217,13 @@ export async function computeEtaForRoute(
     const seconds = etaSeconds[stopIndex]
     if (seconds == null) continue
 
-    // Araç bu durağı geçtiyse bildirim anlamsız
+    // If the vehicle has passed this stop, a notification is meaningless
     if (!isPending(stops[stopIndex])) continue
 
     const etaMinutes = Math.max(Math.round(seconds / 60), 1)
     if (etaMinutes > passenger.notify_before_minutes) continue
 
-    // Sefere bağlı, kalıcı dedup: (trip_id, passenger_id) unique
+    // Trip-scoped, persistent dedup: (trip_id, passenger_id) unique
     const claim = await db.query(
       `INSERT INTO trip_notifications
          (company_id, trip_id, passenger_id, stop_id, eta_minutes)
@@ -244,7 +244,7 @@ export async function computeEtaForRoute(
         etaMinutes,
       })
     } catch (err) {
-      // Kuyruğa atılamadıysa dedup kaydını geri al — sonraki hesap tekrar denesin
+      // If the enqueue failed, roll back the dedup row — let the next compute retry
       await db.query(
         'DELETE FROM trip_notifications WHERE trip_id = $1 AND passenger_id = $2',
         [tripId, passenger.id],

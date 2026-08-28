@@ -1,18 +1,18 @@
 /**
- * Netgsm SMS adapter'ı (POST /sms/send/get).
- * Arayüz: send({ passenger, message }) → { ok, error?, retryable? }
+ * Netgsm SMS adapter (POST /sms/send/get).
+ * Interface: send({ passenger, message }) -> { ok, error?, retryable? }
  *
- * Netgsm yanıtı düz metindir: "00 <jobid>" başarı; 20/30/40/50/51/70/85
- * hata kodlarıdır (30: geçersiz kimlik, 40: başlık tanımsız, 70: parametre
- * hatası, 85: sistem hatası — tek geçici olan budur).
+ * The Netgsm response is plain text: "00 <jobid>" on success; 20/30/40/50/51/70/85
+ * are error codes (30: invalid credentials, 40: undefined header, 70: parameter
+ * error, 85: system error — the only transient one).
  *
- * Kimlik bilgileri gövdede taşınır (D11): query string'de gönderildiklerinde
- * giden proxy ve erişim loglarına düz metin şifre düşüyordu.
+ * Credentials are carried in the body (D11): when sent in the query string they
+ * ended up as plain-text passwords in the outbound proxy and access logs.
  */
 import { env } from '../../config/env.js'
 import { logger } from '../../utils/logger.js'
 
-/** '0532 111 22 33' / '+90 532 ...' → '5321112233' (Netgsm formatı) */
+/** '0532 111 22 33' / '+90 532 ...' -> '5321112233' (Netgsm format) */
 export function normalizeGsm(phone) {
   let digits = String(phone).replace(/\D/g, '')
   if (digits.startsWith('90') && digits.length > 10) digits = digits.slice(2)
@@ -27,7 +27,7 @@ export async function send({ passenger, message }) {
     return { ok: false, error: 'missing_phone' }
   }
   if (!env.NETGSM_USERCODE || !env.NETGSM_PASSWORD || !env.NETGSM_MSGHEADER) {
-    logger.warn('Netgsm kimlik bilgileri tanımlı değil — SMS gönderilemedi')
+    logger.warn('Netgsm credentials are not set — SMS not sent')
     return { ok: false, error: 'sms_not_configured' }
   }
 
@@ -54,7 +54,7 @@ export async function send({ passenger, message }) {
       signal: AbortSignal.timeout(10_000),
     })
   } catch (err) {
-    logger.error({ err, passengerId: passenger.id }, 'Netgsm isteği atılamadı')
+    logger.error({ err, passengerId: passenger.id }, 'Netgsm request could not be sent')
     return { ok: false, error: 'sms_network', retryable: true }
   }
 
@@ -63,7 +63,7 @@ export async function send({ passenger, message }) {
   if (!res.ok || code !== '00') {
     logger.error(
       { status: res.status, response: text, passengerId: passenger.id },
-      'Netgsm gönderimi başarısız',
+      'Netgsm send failed',
     )
     return {
       ok: false,

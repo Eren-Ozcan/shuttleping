@@ -1,29 +1,30 @@
 /**
- * Şirket erişim/faturalama durumu (Faz C).
+ * Company access / billing status (Phase C).
  *
- * Kademeli askıya alma:
- *   active    — kısıt yok
- *   overdue   — company_admin girişi kapalı, harici ETA sağlayıcısı
- *               kullanılmaz (haversine'e düşülür). Sürücü ve bildirimler
- *               çalışır: yolcu ödeme ilişkisinin tarafı değil.
- *   suspended — tüm girişler kapalı, konum ingest reddedilir, bildirim gitmez.
+ * Graduated suspension:
+ *   active    — no restriction
+ *   overdue   — company_admin login is closed, the external ETA provider is
+ *               not used (falls back to haversine). Driver and notifications
+ *               keep working: the passenger is not a party to the payment relationship.
+ *   suspended — all logins closed, location ingest rejected, no notifications sent.
  *
- * Durum ETA ve bildirim worker'larının sıcak yolunda okunduğu için Redis'te
- * kısa süreli cache'lenir; ödeme durumu değişince cache açıkça temizlenir.
+ * The status is read on the hot path of the ETA and notification workers, so
+ * it is cached briefly in Redis; the cache is explicitly cleared when the
+ * payment status changes.
  */
 import { pool } from '../db/pool.js'
 
 const CACHE_TTL_SECONDS = 60
 const cacheKey = (companyId) => `company:access:${companyId}`
 
-/** Harici ETA sağlayıcısı (Google) yalnızca ödeme güncelken kullanılır. */
+/** The external ETA provider (Google) is only used while payment is current. */
 export const canUseEtaProvider = (status) => status?.paymentStatus === 'active'
 
-/** Bildirim gönderimi yalnızca askıya alınmış şirketlerde durur. */
+/** Notification sending only stops for suspended companies. */
 export const canNotify = (status) =>
   Boolean(status?.isActive) && status?.paymentStatus !== 'suspended'
 
-/** Konum kabulü de askıya alınmış şirketlerde durur. */
+/** Location ingest also stops for suspended companies. */
 export const canIngestLocation = canNotify
 
 async function loadCompanyAccess(companyId) {
@@ -42,10 +43,10 @@ async function loadCompanyAccess(companyId) {
 }
 
 /**
- * Şirketin erişim durumunu döner (Redis cache'li).
- * Redis verilmezse ya da okunamazsa doğrudan DB'ye gidilir — faturalama
- * kapısı cache arızasında sessizce açılmamalı.
- * @returns {Promise<{paymentStatus:string,isActive:boolean,maxPassengers:number|null}|null>}
+ * Returns the company's access status (Redis-cached).
+ * If Redis is not provided or cannot be read, it goes straight to the DB — the
+ * billing gate must not silently open on a cache failure.
+ * @returns {Promise<{paymentStatus:string,isActive:boolean,maxPassengers:number|null,dryRun:boolean}|null>}
  */
 export async function getCompanyAccess(companyId, redis) {
   if (!companyId) return null
@@ -55,7 +56,7 @@ export async function getCompanyAccess(companyId, redis) {
       const cached = await redis.get(cacheKey(companyId))
       if (cached) return JSON.parse(cached)
     } catch {
-      // cache okunamadı — DB'ye düş
+      // cache unreadable — fall through to the DB
     }
   }
 
@@ -68,14 +69,14 @@ export async function getCompanyAccess(companyId, redis) {
   return status
 }
 
-/** Ödeme durumu / kota değişince cache'i düşür. */
+/** Drop the cache when payment status / quota changes. */
 export async function invalidateCompanyAccess(companyId, redis) {
   if (!redis || !companyId) return
   await redis.del(cacheKey(companyId)).catch(() => {})
 }
 
 /**
- * Aktif yolcu kotasını kontrol eder.
+ * Checks the active passenger quota.
  * @returns {Promise<{allowed:boolean, used:number, max:number|null}>}
  */
 export async function checkPassengerQuota(companyId, redis) {
@@ -93,9 +94,9 @@ export async function checkPassengerQuota(companyId, redis) {
 }
 
 /**
- * Vadesi geçmiş aktif şirketleri 'overdue' işaretler.
- * next_due_date bugüne kadar yazılıyor ama hiçbir kod yolu okumuyordu.
- * @returns {Promise<Array<{id:string,name:string}>>} durumu değişen şirketler
+ * Marks active companies past their due date as 'overdue'.
+ * next_due_date was being written but no code path read it.
+ * @returns {Promise<Array<{id:string,name:string}>>} companies whose status changed
  */
 export async function markOverdueCompanies(redis) {
   const { rows } = await pool.query(

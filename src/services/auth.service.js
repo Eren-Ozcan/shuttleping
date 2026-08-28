@@ -5,10 +5,10 @@ import { pool } from '../db/pool.js'
 const SALT_ROUNDS = 12
 
 /**
- * Kayıtlı olmayan e-posta için karşılaştırılacak sahte hash. Kullanıcı
- * bulunamadığında da bcrypt maliyeti ödenir; aksi halde yanıt süresi farkı
- * e-postanın sistemde olup olmadığını sızdırır. Değeri hiçbir şifreyle
- * eşleşmez (geçerli bir bcrypt hash, rastgele salt).
+ * Fake hash to compare against for an unregistered email. The bcrypt cost is
+ * paid even when the user is not found; otherwise the response-time difference
+ * leaks whether the email exists. This value matches no password (a valid
+ * bcrypt hash with a random salt).
  */
 export const DUMMY_PASSWORD_HASH =
   '$2b$12$C6UzMDM.H6dfI/f/IKcEe.9L/3pJ0zfMPPZ0/9x3nqgWDXBcQfhvi'
@@ -30,9 +30,9 @@ export async function findUserByEmail(email) {
 }
 
 /**
- * Yeni refresh token satırı yazar.
- * familyId verilmezse yeni bir aile açılır (ilk giriş); verilirse rotasyon
- * zinciri aynı ailede devam eder (D9).
+ * Writes a new refresh token row.
+ * Without familyId a new family is opened (first login); with it, the rotation
+ * chain continues in the same family (D9).
  * @returns {Promise<{id: string, family_id: string}>}
  */
 export async function createRefreshToken(userId, tokenHash, expiresAt, familyId) {
@@ -46,8 +46,8 @@ export async function createRefreshToken(userId, tokenHash, expiresAt, familyId)
 }
 
 /**
- * Token'ı hash'inden bulur. İptal edilmiş satırlar da döner — çağıranın
- * yeniden kullanımı tespit edebilmesi için (D9).
+ * Looks a token up by its hash. Revoked rows are returned too — so the caller
+ * can detect reuse (D9).
  */
 export async function findRefreshToken(tokenHash) {
   const { rows } = await pool.query(
@@ -65,9 +65,9 @@ export async function findRefreshToken(tokenHash) {
 }
 
 /**
- * Token'ı iptal eder ve yerine geçeni işaretler (rotasyon).
- * Silme yerine iptal: çalınmış bir kopyanın tekrar sunulduğunu görebilmek
- * için satırın kalması gerekir.
+ * Revokes a token and marks its replacement (rotation).
+ * Revoke instead of delete: the row must stay so a re-submitted stolen copy
+ * can be spotted.
  */
 export async function rotateRefreshToken(tokenId, replacedById) {
   await pool.query(
@@ -77,9 +77,9 @@ export async function rotateRefreshToken(tokenId, replacedById) {
 }
 
 /**
- * Bir ailenin tüm token'larını iptal eder.
- * İptal edilmiş bir token yeniden sunulduğunda çağrılır: token kopyalanmış
- * demektir, hem hırsızın hem meşru kullanıcının oturumu düşmelidir.
+ * Revokes every token in a family.
+ * Called when a revoked token is presented again: the token has been copied,
+ * so both the thief's and the legitimate user's sessions must drop.
  */
 export async function revokeTokenFamily(familyId) {
   const { rowCount } = await pool.query(
@@ -89,7 +89,7 @@ export async function revokeTokenFamily(familyId) {
   return rowCount
 }
 
-/** Süresi geçmiş ve uzun süre önce iptal edilmiş satırları siler. */
+/** Deletes rows that are expired, or were revoked long ago. */
 export async function purgeExpiredRefreshTokens() {
   const { rowCount } = await pool.query(
     `DELETE FROM refresh_tokens
@@ -100,8 +100,8 @@ export async function purgeExpiredRefreshTokens() {
 }
 
 /**
- * super_admin dışındaki roller için erişim kapısı: şirket pasifse ya da
- * ödemesi gecikmişse giriş bloklanır.
+ * Access gate for roles other than super_admin: login is blocked if the
+ * company is inactive or its payment is overdue.
  */
 export async function findCompanyAccess(companyId) {
   if (!companyId) return null
@@ -112,7 +112,7 @@ export async function findCompanyAccess(companyId) {
   return rows[0] ?? null
 }
 
-/** Logout: token'ı ve ait olduğu tüm aileyi iptal eder. */
+/** Logout: revokes the token and its whole family. */
 export async function deleteRefreshToken(tokenHash) {
   await pool.query(
     `UPDATE refresh_tokens SET revoked_at = now()
@@ -129,12 +129,12 @@ export async function deleteAllUserTokens(userId) {
   )
 }
 
-/** Raw token'ı SHA-256 ile hash'le (DB'de raw token saklanmaz) */
+/** Hash a raw token with SHA-256 (raw tokens are never stored in the DB). */
 export function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex')
 }
 
-/** 40-byte kriptografik olarak güvenli rastgele token üret */
+/** Generate a 40-byte cryptographically secure random token. */
 export function generateToken() {
   return crypto.randomBytes(40).toString('hex')
 }

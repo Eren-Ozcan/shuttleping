@@ -1,18 +1,18 @@
 /**
- * Araç konumundan duraklara tahmini varış süresi (saniye).
+ * Estimated time of arrival (seconds) from a vehicle position to the stops.
  *
- * Google Routes API `computeRouteMatrix` kullanılır (legacy Distance Matrix
- * API'nin halefi). Anahtar yoksa, durak çok uzaksa, günlük bütçe dolduysa
- * veya istek başarısız olursa kuş uçuşu mesafe + sabit ortalama hızla kaba
- * tahmin yapılır.
+ * Uses the Google Routes API `computeRouteMatrix` (successor to the legacy
+ * Distance Matrix API). Without a key, or if a stop is too far, the daily
+ * budget is spent, or the request fails, a rough estimate is made from
+ * straight-line distance + a fixed average speed.
  *
- * Maliyet kontrolü (Faz B):
- *   - Uzak duraklar (ETA > ETA_GOOGLE_MAX_MINUTES veya mesafe > eşik) Google'a
- *     hiç sorulmaz — o mesafede dakika hassasiyeti zaten anlamsız
- *   - Yakın duraklar TRAFFIC_AWARE (Pro SKU), orta mesafedekiler
- *     TRAFFIC_UNAWARE (Essentials SKU — yarı fiyat) ile sorulur
- *   - Günlük element sayacı bütçeyi aşarsa tamamen haversine'e düşülür
- *   - Bir chunk patlarsa sadece o chunk fallback'e düşer, diğerleri korunur
+ * Cost control (Phase B):
+ *   - Far stops (ETA > ETA_GOOGLE_MAX_MINUTES or distance > threshold) are
+ *     never queried against Google — minute-level precision is meaningless there
+ *   - Near stops are queried TRAFFIC_AWARE (Pro SKU), mid-range ones
+ *     TRAFFIC_UNAWARE (Essentials SKU — half price)
+ *   - If the daily element counter exceeds the budget, fall back entirely to haversine
+ *   - If one chunk fails, only that chunk falls back — the others are kept
  */
 import { env } from '../../config/env.js'
 import { logger } from '../../utils/logger.js'
@@ -30,7 +30,7 @@ export function haversineMeters(a, b) {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
 }
 
-/** Kuş uçuşu mesafe / ortalama hız — Google anahtarı yokken kaba tahmin. */
+/** Straight-line distance / average speed — rough estimate without a Google key. */
 export function fallbackEtaSeconds(origin, destinations, speedKmh = env.ETA_FALLBACK_SPEED_KMH) {
   const metersPerSecond = (speedKmh * 1000) / 3600
   return destinations.map((d) =>
@@ -39,12 +39,12 @@ export function fallbackEtaSeconds(origin, destinations, speedKmh = env.ETA_FALL
 }
 
 const MATRIX_URL = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix'
-// 1 origin × N destination = N element. TRAFFIC_AWARE limiti 625 element,
-// pratikte yakın pencerede birkaç durak olur; 25 güvenli ve yeterli.
+// 1 origin x N destination = N elements. The TRAFFIC_AWARE limit is 625
+// elements; in practice a near window has a handful of stops; 25 is safe and enough.
 const MAX_DESTINATIONS_PER_REQUEST = 25
 const FIELD_MASK = 'originIndex,destinationIndex,duration,condition'
 
-/** Günlük element sayacı anahtarı — UTC gün sınırı yeterli. */
+/** Daily element counter key — a UTC day boundary is good enough. */
 export const budgetKey = (date = new Date()) =>
   `gmaps:elements:${date.toISOString().slice(0, 10)}`
 
@@ -52,7 +52,7 @@ const waypoint = (p) => ({
   waypoint: { location: { latLng: { latitude: p.lat, longitude: p.lng } } },
 })
 
-/** Routes API "160s" biçimindeki süreyi saniyeye çevirir. */
+/** Converts a Routes API duration like "160s" into seconds. */
 function parseDuration(value) {
   if (typeof value !== 'string') return null
   const seconds = Number.parseFloat(value.replace(/s$/, ''))
@@ -60,9 +60,9 @@ function parseDuration(value) {
 }
 
 /**
- * Tek bir computeRouteMatrix isteği. Sonuç, destinations dizisiyle aynı
- * sıradaki saniye dizisidir; hesaplanamayan durak için null.
- * @throws istek başarısız olursa (çağıran chunk bazında fallback yapar)
+ * A single computeRouteMatrix request. The result is an array of seconds in
+ * the same order as destinations; null for a stop that could not be computed.
+ * @throws if the request fails (the caller does per-chunk fallback)
  */
 async function routeMatrixSeconds(origin, destinations, { trafficAware }) {
   const res = await fetch(MATRIX_URL, {
@@ -85,7 +85,7 @@ async function routeMatrixSeconds(origin, destinations, { trafficAware }) {
 
   if (!res.ok) throw new Error(`Routes API HTTP ${res.status}`)
   const body = await res.json()
-  if (!Array.isArray(body)) throw new Error('Routes API beklenmeyen yanıt biçimi')
+  if (!Array.isArray(body)) throw new Error('Routes API unexpected response shape')
 
   const seconds = new Array(destinations.length).fill(null)
   for (const element of body) {
@@ -98,8 +98,8 @@ async function routeMatrixSeconds(origin, destinations, { trafficAware }) {
 }
 
 /**
- * Bir grup durağı chunk'layarak sorar. Patlayan chunk sessizce haversine'e
- * düşer — sağlam chunk'ların sonucu korunur (B7).
+ * Queries a group of stops in chunks. A failing chunk silently falls back to
+ * haversine — the results of the healthy chunks are kept (B7).
  * @returns {Promise<{seconds:Array<number|null>, googleCount:number}>}
  */
 async function queryGroup(origin, group, { trafficAware }) {
@@ -119,7 +119,7 @@ async function queryGroup(origin, group, { trafficAware }) {
     } catch (err) {
       logger.warn(
         { err, trafficAware, chunkSize: chunk.length },
-        'Routes API chunk başarısız — bu chunk haversine\'e düşüyor',
+        'Routes API chunk failed — this chunk falls back to haversine',
       )
     }
   }
@@ -127,20 +127,20 @@ async function queryGroup(origin, group, { trafficAware }) {
 }
 
 /**
- * Günlük element bütçesini kontrol eder ve kullanımı sayar.
- * Bütçe aşılırsa false döner; çağıran tamamen haversine'e düşer.
+ * Checks the daily element budget and counts usage.
+ * Returns false if the budget is exceeded; the caller falls back entirely to haversine.
  */
 async function reserveBudget(redis, elements) {
   if (!redis || !env.GOOGLE_DAILY_ELEMENT_BUDGET) return true
   const key = budgetKey()
   const used = await redis.incrby(key, elements)
-  // Sayaç günlük; ilk artışta 2 günlük TTL ver (gün sınırında kayıp olmasın)
+  // The counter is daily; on the first increment give it a 2-day TTL (no loss at the day boundary)
   if (used === elements) await redis.expire(key, 172_800)
 
   if (used > env.GOOGLE_DAILY_ELEMENT_BUDGET) {
     logger.error(
       { used, budget: env.GOOGLE_DAILY_ELEMENT_BUDGET },
-      'Google Maps günlük element bütçesi aşıldı — haversine fallback devrede',
+      'Google Maps daily element budget exceeded — haversine fallback active',
     )
     return false
   }
@@ -148,9 +148,9 @@ async function reserveBudget(redis, elements) {
 }
 
 /**
- * @param {{lat:number,lng:number}} origin — aracın son konumu
- * @param {Array<{lat:number,lng:number}>} destinations — duraklar (sıra korunur)
- * @param {{redis?:object}} [opts] — bütçe sayacı için Redis (yoksa sayaç atlanır)
+ * @param {{lat:number,lng:number}} origin — the vehicle's last position
+ * @param {Array<{lat:number,lng:number}>} destinations — stops (order preserved)
+ * @param {{redis?:object}} [opts] — Redis for the budget counter (skipped if absent)
  * @returns {Promise<{seconds:Array<number|null>, source:'google'|'haversine'|'mixed', elements:number}>}
  */
 export async function getEtaSeconds(origin, destinations, { redis } = {}) {
@@ -160,8 +160,8 @@ export async function getEtaSeconds(origin, destinations, { redis } = {}) {
   const result = { seconds: [...haversine], source: 'haversine', elements: 0 }
   if (!env.GOOGLE_MAPS_API_KEY) return result
 
-  // Kaba tahmine göre grupla: uzak → Google'a hiç sorma, yakın → trafikli,
-  // orta → trafiksiz (yarı fiyat)
+  // Group by the rough estimate: far -> do not query Google, near -> traffic-aware,
+  // mid -> traffic-unaware (half price)
   const maxSeconds = env.ETA_GOOGLE_MAX_MINUTES * 60
   const trafficSeconds = env.ETA_TRAFFIC_AWARE_MINUTES * 60
   const maxMeters = env.ETA_GOOGLE_MAX_DISTANCE_KM * 1000

@@ -1,20 +1,20 @@
 /**
- * Kanal-bağımsız bildirim dispatcher'ı.
+ * Channel-agnostic notification dispatcher.
  *
- * Her kanal aynı arayüzü uygular:
- *   send({ passenger, message }) → { ok, error?, retryable? }
- * retryable: true dönen hatalar BullMQ tarafından yeniden denenir.
- * Yeni kanal eklemek (örn. mobil push/FCM) = CHANNELS map'ine adapter eklemek.
+ * Every channel implements the same interface:
+ *   send({ passenger, message }) -> { ok, error?, retryable? }
+ * Errors that return retryable: true are retried by BullMQ.
+ * Adding a new channel (e.g. mobile push/FCM) = adding an adapter to the CHANNELS map.
  *
- * Dry-run (Faz F3): prova sırasında gerçek yolcuya gerçek mesaj gitmesin.
- * İki seviye vardır — global `NOTIFICATION_DRY_RUN` env bayrağı ve şirket
- * bazında `companies.dry_run`. Biri bile açıksa gönderim yapılmaz; sonuç
- * notification_logs'a `dry_run` durumuyla düşer, böylece prova akışı denetim
- * kaydında canlı gönderimden ayırt edilebilir.
+ * Dry-run (Phase F3): during a rehearsal, no real message should reach a real
+ * passenger. There are two levels — the global `NOTIFICATION_DRY_RUN` env flag
+ * and the per-company `companies.dry_run`. If either is on, nothing is sent;
+ * the result lands in notification_logs with status `dry_run`, so the
+ * rehearsal flow is distinguishable from a live send in the audit log.
  *
- * NOTIFICATION_TEST_CHAT_ID verilmişse mesaj bastırılmak yerine o tek
- * Telegram hesabına yönlendirilir: uçtan uca akış gerçekten sınanır ama
- * yolcular etkilenmez.
+ * If NOTIFICATION_TEST_CHAT_ID is set, the message is routed to that single
+ * Telegram account instead of being suppressed: the end-to-end flow is really
+ * exercised but passengers are not affected.
  */
 import { env } from '../../config/env.js'
 import { logger } from '../../utils/logger.js'
@@ -24,26 +24,26 @@ import * as sms from './sms.js'
 const CHANNELS = {
   telegram,
   sms,
-  // push: Faz 4+ — yolcu mobil uygulaması (FCM) eklendiğinde buraya bağlanır
+  // push: Phase 4+ — wired in here when the passenger mobile app (FCM) is added
 }
 
 /**
- * @param {object} passenger — passengers tablosu satırı (notification_channel dahil)
- * @param {string} message — gönderilecek metin
- * @param {{dryRun?: boolean}} [opts] — şirket bazında dry-run override'ı
+ * @param {object} passenger — a passengers table row (includes notification_channel)
+ * @param {string} message — the text to send
+ * @param {{dryRun?: boolean}} [opts] — per-company dry-run override
  */
 export async function notify(passenger, message, { dryRun = false } = {}) {
   const channel = CHANNELS[passenger.notification_channel]
   if (!channel) {
     logger.error(
       { passengerId: passenger.id, channel: passenger.notification_channel },
-      'Bilinmeyen bildirim kanalı',
+      'Unknown notification channel',
     )
     return { ok: false, error: 'unknown_channel' }
   }
 
   if (env.NOTIFICATION_DRY_RUN || dryRun) {
-    // Test hedefi tanımlıysa mesajı oraya yönlendir — akış gerçekten çalışsın
+    // If a test target is set, route the message there — so the flow really runs
     if (env.NOTIFICATION_TEST_CHAT_ID) {
       const result = await telegram.send({
         passenger: { ...passenger, telegram_chat_id: env.NOTIFICATION_TEST_CHAT_ID },
@@ -54,7 +54,7 @@ export async function notify(passenger, message, { dryRun = false } = {}) {
 
     logger.info(
       { passengerId: passenger.id, channel: passenger.notification_channel },
-      'Dry-run: bildirim gönderilmedi',
+      'Dry-run: notification not sent',
     )
     return { ok: true, dryRun: true }
   }
