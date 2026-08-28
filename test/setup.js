@@ -1,12 +1,12 @@
 /**
- * Vitest global setup — her test dosyası yüklenmeden önce çalışır.
+ * Vitest global setup — runs before every test file is loaded.
  *
- * Testler geliştirme veritabanına DEĞİL, ayrı bir test veritabanına yazar.
- * `.env.test` varsa oradan, yoksa DATABASE_URL'in sonuna `_test` eklenerek
- * türetilir. Böylece bir temizlik hatası dev verisini kirletmez.
+ * Tests write to a separate test database, NOT the development one. It is read
+ * from `.env.test` if present, otherwise derived by appending `_test` to
+ * DATABASE_URL. This way a cleanup bug cannot pollute dev data.
  *
- * Bu dosya src/config/env.js'ten ÖNCE çalışmalı; vitest setupFiles bunu
- * garanti eder (env modülü ilk import'ta process.env'i okur).
+ * This file must run BEFORE src/config/env.js; vitest setupFiles guarantees
+ * that (the env module reads process.env on first import).
  */
 import { config } from 'dotenv'
 
@@ -16,18 +16,18 @@ if (!process.env.DATABASE_URL) {
   config() // .env
 }
 
-// .env.test yoksa dev URL'inden test veritabanı adını türet
+// Without .env.test, derive the test database name from the dev URL
 if (!process.env.DATABASE_URL?.includes('_test')) {
   const url = new URL(process.env.DATABASE_URL)
   url.pathname = `${url.pathname.replace(/\/$/, '')}_test`
   process.env.DATABASE_URL = url.toString()
 }
 
-// Testlerde hiçbir gerçek servise ulaşılamasın: .env'deki canlı kimlik
-// bilgileri temizlenir. Kanal testleri gereken değeri kendi içinde env
-// nesnesine atayıp fetch'i stub'lar, dolayısıyla bu onları etkilemez.
-// (NOTIFICATION_DRY_RUN burada zorlanmaz — dispatcher davranışını değiştirip
-// gerçek hata yollarının sınanmasını engellerdi.)
+// No real service must be reachable in tests: live credentials from .env are
+// cleared. Channel tests set the value they need on the env object themselves
+// and stub fetch, so this does not affect them.
+// (NOTIFICATION_DRY_RUN is not forced here — it would change dispatcher
+// behavior and prevent the real error paths from being tested.)
 for (const key of [
   'TELEGRAM_BOT_TOKEN',
   'NETGSM_USERCODE',

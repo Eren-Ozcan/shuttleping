@@ -6,13 +6,13 @@ afterAll(closeTestApp)
 const ROUTE_ID = '00000000-0000-4000-8000-000000000001'
 
 describe('GET /api/v1/routes', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/api/v1/routes' })
     expect(res.statusCode).toBe(401)
   })
 
-  it('driver rolüyle 403 döner', async () => {
+  it('returns 403 for the driver role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -24,7 +24,7 @@ describe('GET /api/v1/routes', () => {
 })
 
 describe('POST /api/v1/routes', () => {
-  it('isim olmadan 400 döner', async () => {
+  it('returns 400 without a name', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -37,7 +37,7 @@ describe('POST /api/v1/routes', () => {
 })
 
 describe('POST /api/v1/routes/:id/stops', () => {
-  it('lat sınır dışında 400 döner', async () => {
+  it('returns 400 for an out-of-range lat', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -48,7 +48,7 @@ describe('POST /api/v1/routes/:id/stops', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('sequence 0 olamaz (400)', async () => {
+  it('sequence cannot be 0 (400)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -61,7 +61,7 @@ describe('POST /api/v1/routes/:id/stops', () => {
 })
 
 describe('PATCH /api/v1/routes/:id', () => {
-  it('boş body ile 400 döner', async () => {
+  it('returns 400 for an empty body', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',

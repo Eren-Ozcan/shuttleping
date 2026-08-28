@@ -1,7 +1,7 @@
 /**
- * Bildirim worker handler'ı — sahte db ile birim test.
- * Kanal adapter'ları gerçek çağrı yapmaz: kalıcı hata senaryoları
- * (eksik chat id) yapılandırmadan bağımsız çalışır.
+ * Notification worker handler — unit test with a fake db.
+ * The channel adapters make no real call: the permanent-failure scenarios
+ * (missing chat id) work regardless of configuration.
  */
 import { describe, it, expect } from 'vitest'
 import { handleNotificationJob } from '../../src/workers/notification.worker.js'
@@ -20,7 +20,7 @@ function fakeDb(passengerRow) {
   }
 }
 
-/** Ödemesi güncel şirket — faturalama kapısı bu testlerin konusu değil. */
+/** A company that is current on payment — the billing gate is not the subject of these tests. */
 const activeAccess = async () => ({
   paymentStatus: 'active',
   isActive: true,
@@ -37,14 +37,14 @@ const jobData = {
 }
 
 describe('handleNotificationJob', () => {
-  it('yolcu bulunamazsa işi atlar, log yazmaz', async () => {
+  it('skips the job and writes no log when the passenger is not found', async () => {
     const db = fakeDb(null)
     const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toEqual({ skipped: 'passenger_not_found' })
-    expect(db.queries).toHaveLength(1) // sadece SELECT
+    expect(db.queries).toHaveLength(1) // SELECT only
   })
 
-  it('kalıcı hata (chat id eksik) retry edilmez, failed olarak loglanır', async () => {
+  it('does not retry a permanent failure (missing chat id), logs it as failed', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
       company_id: jobData.companyId,
@@ -61,11 +61,11 @@ describe('handleNotificationJob', () => {
     expect(insert).toBeDefined()
     expect(insert.params).toContain('failed')
     expect(insert.params).toContain('missing_telegram_chat_id')
-    // mesaj Türkçe formatta ve durak adını içeriyor
+    // the message is in the Turkish format and contains the stop name
     expect(insert.params.some((p) => typeof p === 'string' && p.includes('Meydan'))).toBe(true)
   })
 
-  it('yolcunun tenant\'ı job payload\'ıyla uyuşmazsa atlar (replay koruması)', async () => {
+  it('skips when the passenger tenant does not match the job payload (replay protection)', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
       company_id: '00000000-0000-4000-8000-0000000000ff',
@@ -74,21 +74,21 @@ describe('handleNotificationJob', () => {
     })
     const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toEqual({ skipped: 'company_mismatch' })
-    expect(db.queries).toHaveLength(1) // sadece SELECT, log yazılmaz
+    expect(db.queries).toHaveLength(1) // SELECT only, no log written
   })
 
-  it('bilinmeyen kanal kalıcı hatadır, throw etmez', async () => {
+  it('treats an unknown channel as a permanent failure, does not throw', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
       company_id: jobData.companyId,
-      notification_channel: 'posta_guvercini',
+      notification_channel: 'carrier_pigeon',
     })
 
     const result = await handleNotificationJob({ db, checkAccess: activeAccess }, jobData)
     expect(result).toMatchObject({ ok: false, error: 'unknown_channel' })
   })
 
-  it('prova modundaki şirketin kaydı dry_run olarak loglanır (F3)', async () => {
+  it('logs a dry-run company record as dry_run (F3)', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
       company_id: jobData.companyId,
@@ -106,12 +106,12 @@ describe('handleNotificationJob', () => {
 
     expect(result).toMatchObject({ ok: true, dryRun: true })
     const insert = db.queries.find((q) => q.text.includes('INSERT INTO notification_logs'))
-    // Denetim kaydında prova gönderimi canlıdan ayrılmalı
+    // A dry-run send must be separated from a live one in the audit log
     expect(insert.params).toContain('dry_run')
     expect(insert.params).not.toContain('sent')
   })
 
-  it('askıya alınmış şirkette gönderim yapılmaz (C1)', async () => {
+  it('does not send for a suspended company (C1)', async () => {
     const db = fakeDb({
       id: jobData.passengerId,
       company_id: jobData.companyId,
@@ -127,7 +127,7 @@ describe('handleNotificationJob', () => {
     const result = await handleNotificationJob({ db, checkAccess: suspended }, jobData)
 
     expect(result).toEqual({ skipped: 'billing_blocked' })
-    // Gönderim de log da yok — ödemeyen müşteri için SMS maliyeti doğmaz
+    // No send and no log — no SMS cost for a non-paying customer
     expect(db.queries).toHaveLength(1)
   })
 })

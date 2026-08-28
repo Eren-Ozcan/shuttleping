@@ -4,13 +4,13 @@ import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
 afterAll(closeTestApp)
 
 describe('GET /api/v1/users', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/api/v1/users' })
     expect(res.statusCode).toBe(401)
   })
 
-  it('driver rolüyle 403 döner', async () => {
+  it('returns 403 for the driver role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -20,7 +20,7 @@ describe('GET /api/v1/users', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('geçersiz role filtresinde 400 döner', async () => {
+  it('returns 400 for an invalid role filter', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -32,7 +32,7 @@ describe('GET /api/v1/users', () => {
 })
 
 describe('POST /api/v1/users', () => {
-  it('eksik body ile 400 döner', async () => {
+  it('returns 400 for an incomplete body', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -43,7 +43,7 @@ describe('POST /api/v1/users', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('super_admin rolü atanamaz (400)', async () => {
+  it('the super_admin role cannot be assigned (400)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -61,7 +61,7 @@ describe('POST /api/v1/users', () => {
 })
 
 describe('PATCH /api/v1/users/:id', () => {
-  it('geçersiz uuid ile 400 döner', async () => {
+  it('returns 400 for an invalid uuid', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',
@@ -72,7 +72,7 @@ describe('PATCH /api/v1/users/:id', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('boş body ile 400 döner', async () => {
+  it('returns 400 for an empty body', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',

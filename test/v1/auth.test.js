@@ -1,17 +1,17 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest'
 import { getTestApp, closeTestApp, clearRateLimits } from '../helpers/app.js'
 
-// Rate limit anahtarı kimliksiz isteklerde IP. Test dosyaları paralel koştuğu
-// için bu dosyaya özel bir adres kullanılır; sayaçlar başka dosyalarla
-// karışmaz ve limit testi kararlı olur.
+// The rate-limit key for unauthenticated requests is the IP. Test files run in
+// parallel, so this file uses a dedicated address; the counters do not mix with
+// other files and the limit test stays stable.
 const IP = '10.0.0.1'
 
-// Login rate limit'i dakikada 5 — her test taze sayaçla başlamalı
+// The login rate limit is 5 per minute — every test must start with a fresh counter
 beforeEach(() => clearRateLimits(IP))
 afterAll(closeTestApp)
 
 describe('POST /api/v1/auth/login', () => {
-  it('body olmadan 400 döner', async () => {
+  it('returns 400 without a body', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -22,7 +22,7 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('geçersiz e-posta formatında 400 döner', async () => {
+  it('returns 400 for an invalid email format', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -33,7 +33,7 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('yanlış şifrede 401 döner', async () => {
+  it('returns 401 for a wrong password', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -46,7 +46,7 @@ describe('POST /api/v1/auth/login', () => {
 })
 
 describe('POST /api/v1/auth/refresh', () => {
-  it('refresh cookie olmadan 401 döner', async () => {
+  it('returns 401 without a refresh cookie', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -56,7 +56,7 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('geçersiz refresh cookie ile 401 döner', async () => {
+  it('returns 401 with an invalid refresh cookie', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -69,7 +69,7 @@ describe('POST /api/v1/auth/refresh', () => {
 })
 
 describe('login rate limit (D1)', () => {
-  it('dakikada 5 denemeden sonra 429 döner', async () => {
+  it('returns 429 after 5 attempts per minute', async () => {
     const app = await getTestApp()
     const attempt = () =>
       app.inject({
@@ -88,9 +88,9 @@ describe('login rate limit (D1)', () => {
 })
 
 describe('POST /api/v1/auth/logout', () => {
-  // D10: access token gerektirmez — süresi dolmuş oturumda da kullanıcı
-  // kendi refresh token'ını iptal edebilmeli. Yetki cookie'nin kendisidir.
-  it('access token olmadan da başarılı olur ve cookie temizlenir', async () => {
+  // D10: no access token required — a user must be able to revoke their own
+  // refresh token even in an expired session. The authority is the cookie itself.
+  it('succeeds without an access token and clears the cookie', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -104,7 +104,7 @@ describe('POST /api/v1/auth/logout', () => {
 })
 
 describe('GET /health', () => {
-  it('200 ve { status: ok } döner', async () => {
+  it('returns 200 and { status: ok }', async () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)

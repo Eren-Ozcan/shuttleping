@@ -9,8 +9,8 @@ afterAll(async () => {
     await app.db.query('DELETE FROM users WHERE id = $1', [created.adminId])
   }
   if (created.companyId) {
-    // "Ödeme Alındı" artık ödeme defterine kayıt düşüyor (C4) — şirket
-    // silinmeden önce temizlenmeli
+    // "Payment Received" now writes a row to the payment ledger (C4) — it must
+    // be cleared before the company is deleted
     await app.db.query('DELETE FROM company_payments WHERE company_id = $1', [
       created.companyId,
     ])
@@ -20,7 +20,7 @@ afterAll(async () => {
 })
 
 describe('GET /api/v1/companies', () => {
-  it('company_admin rolüyle 403 döner (sadece super_admin)', async () => {
+  it('returns 403 for the company_admin role (super_admin only)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -32,7 +32,7 @@ describe('GET /api/v1/companies', () => {
 })
 
 describe('POST /api/v1/companies/:id/admins', () => {
-  it('company_admin rolüyle 403 döner', async () => {
+  it('returns 403 for the company_admin role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -43,7 +43,7 @@ describe('POST /api/v1/companies/:id/admins', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('olmayan şirket için 404 döner', async () => {
+  it('returns 404 for a non-existent company', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -54,7 +54,7 @@ describe('POST /api/v1/companies/:id/admins', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('şirket açıp ilk yöneticisini oluşturur; aynı e-posta 409 döner', async () => {
+  it('creates a company and its first admin; the same email returns 409', async () => {
     const app = await getTestApp()
 
     const companyRes = await app.inject({
@@ -89,7 +89,7 @@ describe('POST /api/v1/companies/:id/admins', () => {
 })
 
 describe('PATCH /api/v1/companies/:id/payment-status', () => {
-  it('company_admin rolüyle 403 döner', async () => {
+  it('returns 403 for the company_admin role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',
@@ -100,7 +100,7 @@ describe('PATCH /api/v1/companies/:id/payment-status', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('olmayan şirket için 404 döner', async () => {
+  it('returns 404 for a non-existent company', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',
@@ -111,7 +111,7 @@ describe('PATCH /api/v1/companies/:id/payment-status', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('overdue işaretler, sonra active ile son ödeme/vade tarihini günceller', async () => {
+  it('marks overdue, then with active updates the last payment / due date', async () => {
     const app = await getTestApp()
 
     const companyRes = await app.inject({

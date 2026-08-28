@@ -1,10 +1,10 @@
 /**
- * Faz E — veri bütünlüğü ve dayanıklılık.
- *   E1  bileşik FK: uyuşmayan company_id veritabanı seviyesinde reddedilir
- *   E7  saklama süresi temizliği
- *   E10 buildUpdate boş gövdede 500 değil 400
- *   E11 updated_at trigger'la yönetilir
- *   E12 super_admin salt-okunur destek erişimi
+ * Phase E — data integrity and resilience.
+ *   E1  composite FK: a mismatched company_id is rejected at the database level
+ *   E7  retention cleanup
+ *   E10 buildUpdate returns 400, not 500, on an empty body
+ *   E11 updated_at is managed by a trigger
+ *   E12 super_admin read-only support access
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
@@ -65,28 +65,28 @@ afterAll(async () => {
   await closeTestApp()
 })
 
-describe('E1 — bileşik FK tenant tutarlılığını zorlar', () => {
-  it('durak, güzergahın şirketinden farklı bir company_id ile yazılamaz', async () => {
+describe('E1 — composite FK enforces tenant consistency', () => {
+  it('a stop cannot be written with a company_id different from its route\'s', async () => {
     await expect(
       app.db.query(
         `INSERT INTO stops (company_id, route_id, name, lat, lng, sequence)
-         VALUES ($1, $2, 'Sızan', 41.0, 29.0, 99)`,
+         VALUES ($1, $2, 'Leak', 41.0, 29.0, 99)`,
         [other.companyId, ids.routeId],
       ),
     ).rejects.toMatchObject({ code: '23503' })
   })
 
-  it('yolcu, durağın şirketinden farklı bir company_id ile yazılamaz', async () => {
+  it('a passenger cannot be written with a company_id different from its stop\'s', async () => {
     await expect(
       app.db.query(
         `INSERT INTO passengers (company_id, stop_id, full_name, telegram_chat_id)
-         VALUES ($1, $2, 'Sızan Yolcu', '1')`,
+         VALUES ($1, $2, 'Leaked Passenger', '1')`,
         [other.companyId, ids.stopId],
       ),
     ).rejects.toMatchObject({ code: '23503' })
   })
 
-  it('konum kaydı, güzergahın şirketinden farklı company_id ile yazılamaz', async () => {
+  it('a location record cannot be written with a company_id different from its route\'s', async () => {
     await expect(
       app.db.query(
         `INSERT INTO location_history (company_id, route_id, lat, lng)
@@ -97,15 +97,15 @@ describe('E1 — bileşik FK tenant tutarlılığını zorlar', () => {
   })
 })
 
-describe('E11 — updated_at trigger tarafından yönetilir', () => {
-  it('route güncellemesinde updated_at kendiliğinden ilerler', async () => {
+describe('E11 — updated_at is managed by a trigger', () => {
+  it('updated_at advances by itself on a route update', async () => {
     const before = await app.db.query('SELECT updated_at FROM routes WHERE id = $1', [
       ids.routeId,
     ])
-    // Sorgu artık updated_at'e hiç dokunmuyor — trigger yapmazsa değişmez
+    // The query no longer touches updated_at at all — it stays put unless the trigger acts
     await app.db.query('UPDATE routes SET name = $2 WHERE id = $1', [
       ids.routeId,
-      'IHat güncel',
+      'IHat updated',
     ])
     const after = await app.db.query('SELECT updated_at FROM routes WHERE id = $1', [
       ids.routeId,
@@ -116,12 +116,12 @@ describe('E11 — updated_at trigger tarafından yönetilir', () => {
   })
 })
 
-describe('E10 — buildUpdate boş güncellemede güvenli davranır', () => {
-  it('hiç alan yoksa geçersiz SQL üretmek yerine fırlatır', () => {
+describe('E10 — buildUpdate is safe on an empty update', () => {
+  it('throws instead of producing invalid SQL when there is no field', () => {
     expect(() => buildUpdate({ a: undefined, b: undefined })).toThrow(EmptyUpdateError)
   })
 
-  it('alan varsa normal çalışır', () => {
+  it('works normally when there is a field', () => {
     expect(buildUpdate({ name: 'x', other: undefined })).toEqual({
       sets: ['name = $1'],
       params: ['x'],
@@ -129,8 +129,8 @@ describe('E10 — buildUpdate boş güncellemede güvenli davranır', () => {
   })
 })
 
-describe('E7 — saklama süresi temizliği', () => {
-  it('süresi dolmuş konum kayıtlarını siler, yenileri kalır', async () => {
+describe('E7 — retention cleanup', () => {
+  it('deletes expired location records, keeps recent ones', async () => {
     await app.db.query(
       `INSERT INTO location_history (company_id, route_id, driver_id, lat, lng, recorded_at)
        VALUES ($1, $2, $3, 41.0, 29.0, now() - interval '200 days'),
@@ -144,12 +144,12 @@ describe('E7 — saklama süresi temizliği', () => {
       'SELECT count(*)::int AS n FROM location_history WHERE route_id = $1',
       [ids.routeId],
     )
-    expect(rows[0].n).toBe(1) // yalnızca güncel kayıt kaldı
+    expect(rows[0].n).toBe(1) // only the recent record remains
   })
 })
 
-describe('E12 — super_admin salt-okunur destek erişimi', () => {
-  it('companyId verilmezse 400 döner', async () => {
+describe('E12 — super_admin read-only support access', () => {
+  it('returns 400 when companyId is not given', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/routes',
@@ -158,7 +158,7 @@ describe('E12 — super_admin salt-okunur destek erişimi', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('companyId ile o kiracının güzergahlarını okuyabilir', async () => {
+  it('can read that tenant\'s routes with companyId', async () => {
     const res = await app.inject({
       method: 'GET',
       url: `/api/v1/routes?companyId=${ids.companyId}`,
@@ -168,12 +168,12 @@ describe('E12 — super_admin salt-okunur destek erişimi', () => {
     expect(res.json().map((r) => r.id)).toContain(ids.routeId)
   })
 
-  it('yazma uçları super_admin\'e kapalı kalır', async () => {
+  it('write endpoints stay closed to super_admin', async () => {
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/v1/routes/${ids.routeId}?companyId=${ids.companyId}`,
       headers: await authHeader('super_admin'),
-      payload: { name: 'Destek Değiştirdi' },
+      payload: { name: 'Support Changed It' },
     })
     expect(res.statusCode).toBe(403)
   })

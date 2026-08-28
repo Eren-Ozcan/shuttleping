@@ -4,13 +4,13 @@ import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
 afterAll(closeTestApp)
 
 describe('GET /api/v1/vehicles', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/api/v1/vehicles' })
     expect(res.statusCode).toBe(401)
   })
 
-  it('driver rolüyle 403 döner', async () => {
+  it('returns 403 for the driver role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -22,7 +22,7 @@ describe('GET /api/v1/vehicles', () => {
 })
 
 describe('POST /api/v1/vehicles', () => {
-  it('plaka olmadan 400 döner', async () => {
+  it('returns 400 without a plate', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -35,7 +35,7 @@ describe('POST /api/v1/vehicles', () => {
 })
 
 describe('PATCH /api/v1/vehicles/:id', () => {
-  it('boş body ile 400 döner', async () => {
+  it('returns 400 for an empty body', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'PATCH',

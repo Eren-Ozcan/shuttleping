@@ -8,12 +8,12 @@ import {
 import { env } from '../../src/config/env.js'
 
 describe('haversineMeters', () => {
-  it('aynı nokta için 0 döner', () => {
+  it('returns 0 for the same point', () => {
     const p = { lat: 40.99, lng: 29.02 }
     expect(haversineMeters(p, p)).toBe(0)
   })
 
-  it('40. enlemde 0.1 derece boylam farkı ~8.5 km eder', () => {
+  it('a 0.1 degree longitude difference at latitude 40 is ~8.5 km', () => {
     const a = { lat: 40, lng: 29 }
     const b = { lat: 40, lng: 29.1 }
     const meters = haversineMeters(a, b)
@@ -21,7 +21,7 @@ describe('haversineMeters', () => {
     expect(meters).toBeLessThan(8_700)
   })
 
-  it('simetriktir', () => {
+  it('is symmetric', () => {
     const a = { lat: 41.01, lng: 28.97 } // Eminönü
     const b = { lat: 40.99, lng: 29.02 } // Kadıköy
     expect(haversineMeters(a, b)).toBeCloseTo(haversineMeters(b, a), 6)
@@ -29,14 +29,14 @@ describe('haversineMeters', () => {
 })
 
 describe('fallbackEtaSeconds', () => {
-  it('36 km/sa hızla saniye = mesafe / 10', () => {
+  it('at 36 km/h, seconds = distance / 10', () => {
     const origin = { lat: 40, lng: 29 }
     const stop = { lat: 40, lng: 29.05 }
-    const [eta] = fallbackEtaSeconds(origin, [stop], 36) // 36 km/sa = 10 m/sn
+    const [eta] = fallbackEtaSeconds(origin, [stop], 36) // 36 km/h = 10 m/s
     expect(eta).toBe(Math.round(haversineMeters(origin, stop) / 10))
   })
 
-  it('durak sırasını korur', () => {
+  it('preserves stop order', () => {
     const origin = { lat: 40, lng: 29 }
     const near = { lat: 40, lng: 29.01 }
     const far = { lat: 40, lng: 29.2 }
@@ -47,13 +47,13 @@ describe('fallbackEtaSeconds', () => {
 })
 
 /**
- * Faz B — Routes API çağrısı, hibrit trafik tier'ı, chunk izolasyonu ve
- * günlük bütçe sigortası. fetch sahtelenir, gerçek istek gitmez.
+ * Phase B — Routes API call, hybrid traffic tier, chunk isolation and the
+ * daily budget safety net. fetch is faked, no real request goes out.
  */
 describe('getEtaSeconds (Routes API)', () => {
   const origin = { lat: 41.0, lng: 29.0 }
-  const near = { lat: 41.005, lng: 29.005 } // ~700 m → haversine ~1 dk
-  const far = { lat: 41.9, lng: 29.9 } // ~120 km → eşiğin çok ötesinde
+  const near = { lat: 41.005, lng: 29.005 } // ~700 m -> haversine ~1 min
+  const far = { lat: 41.9, lng: 29.9 } // ~120 km -> well past the threshold
 
   function fakeRedis() {
     const store = new Map()
@@ -68,7 +68,7 @@ describe('getEtaSeconds (Routes API)', () => {
     }
   }
 
-  /** Routes API yanıtı: her destination için "<n>s" süre. */
+  /** Routes API response: a "<n>s" duration per destination. */
   function respond(seconds) {
     return {
       ok: true,
@@ -82,7 +82,7 @@ describe('getEtaSeconds (Routes API)', () => {
     }
   }
 
-  // .env'de gerçek bir anahtar olabilir — her testte açıkça kur, sızmasın
+  // .env may hold a real key — set it explicitly in every test so it does not leak
   const realKey = env.GOOGLE_MAPS_API_KEY
   beforeEach(() => {
     env.GOOGLE_MAPS_API_KEY = null
@@ -92,7 +92,7 @@ describe('getEtaSeconds (Routes API)', () => {
     env.GOOGLE_MAPS_API_KEY = realKey
   })
 
-  it('anahtar yoksa Google\'a gitmez, haversine döner', async () => {
+  it('does not call Google without a key, returns haversine', async () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
 
@@ -104,7 +104,7 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.seconds[0]).toBeGreaterThan(0)
   })
 
-  it('yakın durağı TRAFFIC_AWARE ile sorar ve süreyi döner', async () => {
+  it('queries a near stop with TRAFFIC_AWARE and returns the duration', async () => {
     env.GOOGLE_MAPS_API_KEY = 'test-key'
     const fetchSpy = vi.fn(async () => respond([240]))
     vi.stubGlobal('fetch', fetchSpy)
@@ -119,7 +119,7 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.seconds[0]).toBe(240)
   })
 
-  it('eşiğin ötesindeki durağı Google\'a hiç sormaz', async () => {
+  it('never queries Google for a stop beyond the threshold', async () => {
     env.GOOGLE_MAPS_API_KEY = 'test-key'
     const fetchSpy = vi.fn(async () => respond([999]))
     vi.stubGlobal('fetch', fetchSpy)
@@ -131,7 +131,7 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.elements).toBe(0)
   })
 
-  it('istek patlarsa o durak haversine\'e düşer, hata fırlatmaz', async () => {
+  it('falls that stop back to haversine on a failed request, does not throw', async () => {
     env.GOOGLE_MAPS_API_KEY = 'test-key'
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 })))
 
@@ -141,7 +141,7 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.seconds[0]).toBeGreaterThan(0)
   })
 
-  it('günlük bütçe aşılırsa Google\'a gitmez', async () => {
+  it('does not call Google once the daily budget is exceeded', async () => {
     env.GOOGLE_MAPS_API_KEY = 'test-key'
     const fetchSpy = vi.fn(async () => respond([240]))
     vi.stubGlobal('fetch', fetchSpy)

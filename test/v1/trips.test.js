@@ -1,6 +1,6 @@
 /**
- * Sefer (trip) yaşam döngüsü — gerçek PostgreSQL + Redis.
- * Sürücü seferi başlatır → konum gönderir → admin seferi görür → sürücü bitirir.
+ * Trip lifecycle — real PostgreSQL + Redis.
+ * The driver starts a trip -> sends a location -> the admin sees the trip -> the driver ends it.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { getTestApp, closeTestApp } from '../helpers/app.js'
@@ -73,8 +73,8 @@ afterAll(async () => {
   await closeTestApp()
 })
 
-describe('sefer yaşam döngüsü', () => {
-  it('sefer açılmadan konum göndermek 409 verir', async () => {
+describe('trip lifecycle', () => {
+  it('sending a location without an open trip returns 409', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/locations',
@@ -84,7 +84,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(res.statusCode).toBe(409)
   })
 
-  it('sürücü seferi başlatır, trip_stops snapshot\'lanır', async () => {
+  it('the driver starts a trip, trip_stops is snapshotted', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/trips/start',
@@ -102,7 +102,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(ts.rows[0].n).toBe(2)
   })
 
-  it('start idempotent — ikinci çağrı aynı seferi döner (200)', async () => {
+  it('start is idempotent — a second call returns the same trip (200)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/trips/start',
@@ -113,7 +113,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(res.json().id).toBe(ids.tripId)
   })
 
-  it('aktif seferle konum gönderilir, geçmişe trip_id ile düşer', async () => {
+  it('a location is sent with an active trip and lands in history with trip_id', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/locations',
@@ -130,7 +130,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(lh.rows.length).toBeGreaterThan(0)
   })
 
-  it('admin sefer listesinde ve detayında görür', async () => {
+  it('the admin sees the trip in the list and in the detail', async () => {
     const list = await app.inject({
       method: 'GET',
       url: '/api/v1/trips?status=active',
@@ -149,7 +149,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(detail.json().notifications).toEqual({ sent: 0, failed: 0 })
   })
 
-  it('başka şirketin admini seferi göremez (404)', async () => {
+  it('another company\'s admin cannot see the trip (404)', async () => {
     const otherAuth = {
       authorization: `Bearer ${app.jwt.sign({
         sub: ids.adminId,
@@ -165,7 +165,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('sürücü seferi bitirir, canlı konum anahtarı silinir', async () => {
+  it('the driver ends the trip, the live location key is deleted', async () => {
     await app.redis.set(locationKey(ids.companyId, ids.routeId), '{}', 'EX', 60)
     const res = await app.inject({
       method: 'POST',
@@ -180,7 +180,7 @@ describe('sefer yaşam döngüsü', () => {
     expect(t.rows[0].status).toBe('completed')
   })
 
-  it('bitmiş seferden sonra end tekrar 404 verir', async () => {
+  it('end returns 404 again after the trip is finished', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/trips/end',

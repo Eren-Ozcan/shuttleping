@@ -4,7 +4,7 @@ import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
 afterAll(closeTestApp)
 
 describe('GET /api/v1/history/locations/:routeId', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -13,7 +13,7 @@ describe('GET /api/v1/history/locations/:routeId', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('driver rolüyle 403 döner', async () => {
+  it('returns 403 for the driver role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -23,7 +23,7 @@ describe('GET /api/v1/history/locations/:routeId', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('geçersiz tarih formatı 400 döner', async () => {
+  it('returns 400 for an invalid date format', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -33,7 +33,7 @@ describe('GET /api/v1/history/locations/:routeId', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('kayıt yoksa boş liste döner', async () => {
+  it('returns an empty list when there are no records', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -46,7 +46,7 @@ describe('GET /api/v1/history/locations/:routeId', () => {
 })
 
 describe('GET /api/v1/history/notifications', () => {
-  it('driver rolüyle 403 döner', async () => {
+  it('returns 403 for the driver role', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -56,7 +56,7 @@ describe('GET /api/v1/history/notifications', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('geçersiz status filtresi 400 döner', async () => {
+  it('returns 400 for an invalid status filter', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -66,7 +66,7 @@ describe('GET /api/v1/history/notifications', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('filtrelerle boş liste döner', async () => {
+  it('returns an empty list with filters', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -79,11 +79,11 @@ describe('GET /api/v1/history/notifications', () => {
 })
 
 describe('GET /health/deep', () => {
-  it('DB ve Redis ayaktayken ok döner', async () => {
+  it('returns ok while DB and Redis are up', async () => {
     const app = await getTestApp()
     const res = await app.inject({ method: 'GET', url: '/health/deep' })
     expect(res.statusCode).toBe(200)
-    // maps bayrağı yalnızca Google anahtarı tanımlıysa eklenir
+    // the maps flag is only added when a Google key is configured
     expect(res.json()).toMatchObject({ status: 'ok', db: 'ok', redis: 'ok' })
   })
 })

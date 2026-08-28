@@ -4,7 +4,7 @@ import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
 afterAll(closeTestApp)
 
 describe('POST /api/v1/locations', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -14,7 +14,7 @@ describe('POST /api/v1/locations', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('company_admin rolüyle 403 döner (sadece driver)', async () => {
+  it('returns 403 for the company_admin role (driver only)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -25,7 +25,7 @@ describe('POST /api/v1/locations', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('lat/lng olmadan 400 döner', async () => {
+  it('returns 400 without lat/lng', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -38,7 +38,7 @@ describe('POST /api/v1/locations', () => {
 })
 
 describe('GET /api/v1/locations/:routeId', () => {
-  it('driver rolüyle 403 döner (sadece company_admin)', async () => {
+  it('returns 403 for the driver role (company_admin only)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -50,7 +50,7 @@ describe('GET /api/v1/locations/:routeId', () => {
 })
 
 describe('GET /api/v1/locations/:routeId/eta', () => {
-  it('driver rolüyle 403 döner (sadece company_admin)', async () => {
+  it('returns 403 for the driver role (company_admin only)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -60,7 +60,7 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('ETA hesaplanmamışsa 404 döner', async () => {
+  it('returns 404 when no ETA has been computed', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -72,7 +72,7 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
 })
 
 describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
-  it('bilet olmadan 400 döner (bilet zorunlu)', async () => {
+  it('returns 400 without a ticket (ticket is required)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -81,7 +81,7 @@ describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('access token bilet olarak kabul edilmez', async () => {
+  it('does not accept an access token as a ticket', async () => {
     const app = await getTestApp()
     const { authorization } = await authHeader('company_admin')
     const token = authorization.replace('Bearer ', '')
@@ -89,11 +89,11 @@ describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
       method: 'GET',
       url: `/api/v1/locations/00000000-0000-4000-8000-000000000001/stream?ticket=${token}`,
     })
-    // JWT bilet formatına uymaz (maxLength) — şema seviyesinde reddedilir
+    // a JWT does not fit the ticket format (maxLength) — rejected at the schema level
     expect(res.statusCode).toBe(400)
   })
 
-  it('uydurma bilet 401 döner', async () => {
+  it('returns 401 for a made-up ticket', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'GET',
@@ -104,7 +104,7 @@ describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
 })
 
 describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
-  it('token olmadan 401 döner', async () => {
+  it('returns 401 without a token', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -113,7 +113,7 @@ describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('driver rolüyle 403 döner (sadece company_admin)', async () => {
+  it('returns 403 for the driver role (company_admin only)', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',
@@ -123,7 +123,7 @@ describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('başka şirketin güzergahı için 404 döner', async () => {
+  it('returns 404 for another company\'s route', async () => {
     const app = await getTestApp()
     const res = await app.inject({
       method: 'POST',

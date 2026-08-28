@@ -1,6 +1,6 @@
 /**
- * Kanal adapter'ları — fetch stub'lanır, gerçek API'ye istek gitmez.
- * env değerleri test içinde geçici değiştirilir ve geri yüklenir.
+ * Channel adapters — fetch is stubbed, no request goes to a real API.
+ * env values are changed temporarily inside a test and restored.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { env } from '../../src/config/env.js'
@@ -27,7 +27,7 @@ const passenger = {
 }
 
 describe('telegram.send', () => {
-  it('token tanımlı değilse kalıcı hata döner, fetch çağrılmaz', async () => {
+  it('returns a permanent error and does not call fetch when the token is not set', async () => {
     env.TELEGRAM_BOT_TOKEN = null
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -37,7 +37,7 @@ describe('telegram.send', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('chat id eksikse kalıcı hata döner', async () => {
+  it('returns a permanent error when the chat id is missing', async () => {
     env.TELEGRAM_BOT_TOKEN = 'test-token'
     const result = await telegram.send({
       passenger: { ...passenger, telegram_chat_id: null },
@@ -46,7 +46,7 @@ describe('telegram.send', () => {
     expect(result).toEqual({ ok: false, error: 'missing_telegram_chat_id' })
   })
 
-  it('başarılı gönderimde doğru endpoint ve payload kullanılır', async () => {
+  it('uses the correct endpoint and payload on a successful send', async () => {
     env.TELEGRAM_BOT_TOKEN = 'test-token'
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -63,13 +63,13 @@ describe('telegram.send', () => {
     expect(JSON.parse(opts.body)).toEqual({ chat_id: '12345', text: 'Servis geliyor' })
   })
 
-  it('403 (bot bloklu) kalıcı, 500 ve 429 geçici hatadır', async () => {
+  it('403 (bot blocked) is permanent, 500 and 429 are transient', async () => {
     env.TELEGRAM_BOT_TOKEN = 'test-token'
     for (const [status, retryable] of [[403, false], [500, true], [429, true]]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: false,
         status,
-        json: async () => ({ ok: false, description: 'hata' }),
+        json: async () => ({ ok: false, description: 'error' }),
       }))
       const result = await telegram.send({ passenger, message: 'test' })
       expect(result.ok).toBe(false)
@@ -78,7 +78,7 @@ describe('telegram.send', () => {
     }
   })
 
-  it('network hatası geçicidir (retry edilir)', async () => {
+  it('a network error is transient (retried)', async () => {
     env.TELEGRAM_BOT_TOKEN = 'test-token'
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNRESET')))
     const result = await telegram.send({ passenger, message: 'test' })
@@ -87,7 +87,7 @@ describe('telegram.send', () => {
 })
 
 describe('sms.normalizeGsm', () => {
-  it('yaygın Türk telefon formatlarını Netgsm formatına çevirir', () => {
+  it('converts common Turkish phone formats to the Netgsm format', () => {
     expect(sms.normalizeGsm('0532 111 22 33')).toBe('5321112233')
     expect(sms.normalizeGsm('+90 532 111 22 33')).toBe('5321112233')
     expect(sms.normalizeGsm('905321112233')).toBe('5321112233')
@@ -102,13 +102,13 @@ describe('sms.send', () => {
     env.NETGSM_MSGHEADER = 'SHUTTLEPING'
   }
 
-  it('kimlik bilgileri tanımlı değilse kalıcı hata döner', async () => {
+  it('returns a permanent error when credentials are not set', async () => {
     env.NETGSM_USERCODE = null
     const result = await sms.send({ passenger, message: 'test' })
     expect(result).toEqual({ ok: false, error: 'sms_not_configured' })
   })
 
-  it('telefon yoksa / geçersizse kalıcı hata döner', async () => {
+  it('returns a permanent error when the phone is missing / invalid', async () => {
     configureNetgsm()
     expect(await sms.send({ passenger: { ...passenger, phone: null }, message: 't' }))
       .toEqual({ ok: false, error: 'missing_phone' })
@@ -116,7 +116,7 @@ describe('sms.send', () => {
       .toEqual({ ok: false, error: 'invalid_phone' })
   })
 
-  it('"00 jobid" yanıtı başarıdır; gsmno normalize edilir', async () => {
+  it('a "00 jobid" response is success; gsmno is normalized', async () => {
     configureNetgsm()
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -128,8 +128,8 @@ describe('sms.send', () => {
     const result = await sms.send({ passenger, message: 'Servis geliyor' })
     expect(result).toEqual({ ok: true })
 
-    // Kimlik bilgileri gövdede taşınır (D11) — query string'de şifre
-    // giden proxy/erişim loglarına düz metin düşüyordu
+    // Credentials are carried in the body (D11) — a password in the query string
+    // ended up as plain text in the outbound proxy / access logs
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('https://api.netgsm.com.tr/sms/send/get')
     expect(init.method).toBe('POST')
@@ -138,7 +138,7 @@ describe('sms.send', () => {
     expect(init.body.get('password')).toBe('testpass')
   })
 
-  it('şifre URL\'de taşınmaz', async () => {
+  it('does not carry the password in the URL', async () => {
     configureNetgsm()
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -153,7 +153,7 @@ describe('sms.send', () => {
     expect(fetchMock.mock.calls[0][0]).not.toContain('?')
   })
 
-  it('30 (geçersiz kimlik) kalıcı, 85 (sistem hatası) geçicidir', async () => {
+  it('30 (invalid credentials) is permanent, 85 (system error) is transient', async () => {
     configureNetgsm()
     for (const [code, retryable] of [['30', false], ['85', true]]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -170,15 +170,15 @@ describe('sms.send', () => {
 })
 
 describe('notify (dispatcher)', () => {
-  it('bilinmeyen kanal için unknown_channel döner', async () => {
+  it('returns unknown_channel for an unknown channel', async () => {
     const result = await notify(
-      { ...passenger, notification_channel: 'posta_guvercini' },
+      { ...passenger, notification_channel: 'carrier_pigeon' },
       'test',
     )
     expect(result).toEqual({ ok: false, error: 'unknown_channel' })
   })
 
-  it('kanal tercihine göre doğru adapter\'a yönlendirir', async () => {
+  it('routes to the correct adapter based on the channel preference', async () => {
     env.TELEGRAM_BOT_TOKEN = 'test-token'
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -197,8 +197,8 @@ describe('notify (dispatcher)', () => {
 })
 
 /**
- * Faz F3 — prova modu. Bugüne kadar bildirim akışını denemek, gerçek yolcuya
- * gerçek mesaj göndermek demekti.
+ * Phase F3 — dry-run mode. Until now, trying out the notification flow meant
+ * sending a real message to a real passenger.
  */
 describe('dry-run', () => {
   const DRY_KEYS = ['NOTIFICATION_DRY_RUN', 'NOTIFICATION_TEST_CHAT_ID']
@@ -212,7 +212,7 @@ describe('dry-run', () => {
     for (const key of DRY_KEYS) env[key] = savedDry[key]
   })
 
-  it('global bayrak açıkken gönderim yapılmaz', async () => {
+  it('does not send while the global flag is on', async () => {
     env.NOTIFICATION_DRY_RUN = true
     env.NOTIFICATION_TEST_CHAT_ID = null
     const fetchMock = vi.fn()
@@ -227,7 +227,7 @@ describe('dry-run', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('şirket bazında bayrak da gönderimi durdurur', async () => {
+  it('the per-company flag also stops the send', async () => {
     env.NOTIFICATION_DRY_RUN = false
     env.NOTIFICATION_TEST_CHAT_ID = null
     const fetchMock = vi.fn()
@@ -243,7 +243,7 @@ describe('dry-run', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('test chat id verilirse mesaj o hesaba yönlendirilir', async () => {
+  it('routes the message to the test account when a test chat id is set', async () => {
     env.NOTIFICATION_DRY_RUN = true
     env.NOTIFICATION_TEST_CHAT_ID = '99999'
     const fetchMock = vi.fn().mockResolvedValue({
@@ -260,7 +260,7 @@ describe('dry-run', () => {
     )
 
     expect(result).toMatchObject({ ok: true, dryRun: true })
-    // SMS tercihli yolcu bile test Telegram hesabına düşer
+    // even an SMS-preferring passenger lands on the test Telegram account
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.chat_id).toBe('99999')
     expect(body.text).toContain('DRY-RUN')

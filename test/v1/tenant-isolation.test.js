@@ -1,13 +1,14 @@
 /**
- * Çok kiracılılık izolasyon matrisi (PILOT-READINESS F).
+ * Multi-tenancy isolation matrix (PILOT-READINESS F).
  *
- * Bu, ürünün en temel güvenlik sözü: `company_id` yalnızca JWT'den okunur ve
- * her sorguda zorunludur. Buna rağmen bugüne kadar tek bir izolasyon testi
- * yoktu — mevcut testler tek şirketle çalışıyor ve çapraz okuma denemiyordu.
+ * This is the product's most basic security promise: `company_id` is read only
+ * from the JWT and is required on every query. Despite that, there was not a
+ * single isolation test until now — the existing tests work with one company
+ * and never attempt a cross-read.
  *
- * Kurgu: iki ayrı şirket (A ve B), her birinin kendi güzergahı, durağı,
- * yolcusu, aracı ve kullanıcıları. A'nın yöneticisi B'nin hiçbir kaydını
- * görememeli, değiştirememeli ve kendi kaydına B'nin kaynağını bağlayamamalı.
+ * Setup: two separate companies (A and B), each with its own route, stop,
+ * passenger, vehicle and users. A's admin must not be able to see or modify any
+ * of B's records, nor link B's resources to its own.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { getTestApp, closeTestApp } from '../helpers/app.js'
@@ -124,11 +125,11 @@ afterAll(async () => {
   await closeTestApp()
 })
 
-/** A'nın yöneticisiyle istek atar. */
+/** Makes a request as A's admin. */
 const asA = (method, url, payload) =>
   app.inject({ method, url, headers: authFor(A), ...(payload ? { payload } : {}) })
 
-describe('liste uçları yalnızca kendi kiracısını döner', () => {
+describe('list endpoints return only the caller\'s own tenant', () => {
   const cases = [
     ['/api/v1/routes', (t) => t.routeId],
     ['/api/v1/vehicles', (t) => t.vehicleId],
@@ -161,7 +162,7 @@ describe('liste uçları yalnızca kendi kiracısını döner', () => {
   })
 })
 
-describe('tekil okuma başka kiracının kaydını vermez', () => {
+describe('a single read does not return another tenant\'s record', () => {
   it('GET /trips/:id → 404', async () => {
     expect((await asA('GET', `/api/v1/trips/${B.tripId}`)).statusCode).toBe(404)
   })
@@ -170,7 +171,7 @@ describe('tekil okuma başka kiracının kaydını vermez', () => {
     expect((await asA('GET', `/api/v1/routes/${B.routeId}/stops`)).statusCode).toBe(404)
   })
 
-  it('GET /history/locations/:routeId → boş liste, B\'nin izi sızmaz', async () => {
+  it('GET /history/locations/:routeId -> empty list, B\'s trace does not leak', async () => {
     const res = await asA('GET', `/api/v1/history/locations/${B.routeId}`)
     expect(res.statusCode).toBe(200)
     expect(res.json().items).toEqual([])
@@ -182,16 +183,16 @@ describe('tekil okuma başka kiracının kaydını vermez', () => {
   })
 })
 
-describe('yazma uçları başka kiracının kaydına dokunamaz', () => {
-  it('PATCH /routes/:id → 404, B\'nin adı değişmez', async () => {
-    const res = await asA('PATCH', `/api/v1/routes/${B.routeId}`, { name: 'ELE GEÇİRİLDİ' })
+describe('write endpoints cannot touch another tenant\'s record', () => {
+  it('PATCH /routes/:id -> 404, B\'s name does not change', async () => {
+    const res = await asA('PATCH', `/api/v1/routes/${B.routeId}`, { name: 'HIJACKED' })
     expect(res.statusCode).toBe(404)
 
     const { rows } = await app.db.query('SELECT name FROM routes WHERE id = $1', [B.routeId])
     expect(rows[0].name).toBe('Hat B')
   })
 
-  it('PATCH /users/:id → 404, B\'nin kullanıcısı pasifleşmez', async () => {
+  it('PATCH /users/:id -> 404, B\'s user is not deactivated', async () => {
     const res = await asA('PATCH', `/api/v1/users/${B.adminId}`, { isActive: false })
     expect(res.statusCode).toBe(404)
 
@@ -212,9 +213,9 @@ describe('yazma uçları başka kiracının kaydına dokunamaz', () => {
     ).toBe(404)
   })
 
-  it('POST /routes/:id/stops başka kiracının güzergahına durak ekleyemez', async () => {
+  it('POST /routes/:id/stops cannot add a stop to another tenant\'s route', async () => {
     const res = await asA('POST', `/api/v1/routes/${B.routeId}/stops`, {
-      name: 'Sızan Durak',
+      name: 'Leaked Stop',
       lat: 41.1,
       lng: 29.1,
       sequence: 9,
@@ -228,8 +229,8 @@ describe('yazma uçları başka kiracının kaydına dokunamaz', () => {
   })
 })
 
-describe('çapraz kiracı referansı kurulamaz', () => {
-  it('A\'nın güzergahına B\'nin sürücüsü atanamaz', async () => {
+describe('a cross-tenant reference cannot be created', () => {
+  it('B\'s driver cannot be assigned to A\'s route', async () => {
     const res = await asA('PATCH', `/api/v1/routes/${A.routeId}`, { driverId: B.driverId })
     expect(res.statusCode).toBe(400)
 
@@ -237,29 +238,29 @@ describe('çapraz kiracı referansı kurulamaz', () => {
     expect(rows[0].driver_id).toBe(A.driverId)
   })
 
-  it('A\'nın güzergahına B\'nin aracı atanamaz', async () => {
+  it('B\'s vehicle cannot be assigned to A\'s route', async () => {
     const res = await asA('PATCH', `/api/v1/routes/${A.routeId}`, { vehicleId: B.vehicleId })
     expect(res.statusCode).toBe(400)
   })
 
-  it('A\'nın yolcusu B\'nin durağına bağlanamaz', async () => {
+  it('A\'s passenger cannot be linked to B\'s stop', async () => {
     const res = await asA('POST', '/api/v1/passengers', {
       stopId: B.stopId,
-      fullName: 'Çapraz Yolcu',
+      fullName: 'Cross Passenger',
       telegramChatId: '1',
     })
     expect(res.statusCode).toBe(400)
   })
 })
 
-describe('body\'den gelen company_id JWT\'yi geçersiz kılamaz', () => {
-  it('POST /passengers gövdesindeki companyId yok sayılır', async () => {
+describe('a company_id in the body cannot override the JWT', () => {
+  it('the companyId in the POST /passengers body is ignored', async () => {
     const res = await asA('POST', '/api/v1/passengers', {
       stopId: A.stopId,
-      fullName: 'Kiracı Testi',
+      fullName: 'Tenant Test',
       telegramChatId: '1',
-      // Şema additionalProperties:false + removeAdditional ile bunu düşürür;
-      // düşürmese bile insert company_id'yi JWT'den alır
+      // The schema drops this via additionalProperties:false + removeAdditional;
+      // even if it did not, the insert takes company_id from the JWT
       companyId: B.companyId,
     })
     expect(res.statusCode).toBe(201)

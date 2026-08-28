@@ -1,8 +1,8 @@
 /**
- * Faz C — gelir koruması. Kademeli askıya alma davranışı:
- *   overdue   → company_admin girişi kapalı, sürücü çalışır, Google sorgusu yok
- *   suspended → tüm girişler kapalı, konum ingest reddedilir, bildirim yok
- * Ayrıca yolcu kotası ve ödeme defteri.
+ * Phase C — revenue protection. Graduated suspension behavior:
+ *   overdue   -> company_admin login closed, driver works, no Google queries
+ *   suspended -> all logins closed, location ingest rejected, no notifications
+ * Also the passenger quota and the payment ledger.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { getTestApp, closeTestApp, clearRateLimits } from '../helpers/app.js'
@@ -13,8 +13,8 @@ import { hashPassword } from '../../src/services/auth.service.js'
 let app
 const ids = {}
 const PASSWORD = 'gecerliSifre123'
-// Bu dosyaya özel rate limit kovası — paralel test dosyaları birbirinin
-// login kotasını tüketmesin
+// A rate-limit bucket specific to this file — so parallel test files do not
+// consume each other's login quota
 const IP = '10.0.0.2'
 
 const auth = (role, sub) => ({
@@ -55,7 +55,7 @@ beforeAll(async () => {
   ids.driverId = driver.id
   ids.driverEmail = driver.email
 
-  // company_payments.recorded_by gerçek bir kullanıcıya işaret etmeli
+  // company_payments.recorded_by must point at a real user
   const superAdmin = await app.db.query(
     `INSERT INTO users (company_id, email, password_hash, role, full_name)
      VALUES (NULL, $1, $2, 'super_admin', 'Test Super') RETURNING id`,
@@ -133,26 +133,26 @@ const login = (email) =>
     payload: { email, password: PASSWORD },
   })
 
-describe('kademeli askıya alma — giriş kapısı', () => {
-  it('active: hem admin hem sürücü giriş yapabilir', async () => {
+describe('graduated suspension — login gate', () => {
+  it('active: both admin and driver can log in', async () => {
     expect((await login(ids.adminEmail)).statusCode).toBe(200)
     expect((await login(ids.driverEmail)).statusCode).toBe(200)
   })
 
-  it('overdue: admin 402 alır, sürücü giriş yapmaya devam eder', async () => {
+  it('overdue: admin gets 402, driver can still log in', async () => {
     await setStatus('overdue')
     expect((await login(ids.adminEmail)).statusCode).toBe(402)
-    // Servis yolcular için işlemeye devam etmeli — baskı hesabı yöneten kişide
+    // The service must keep running for passengers — the pressure is on the account owner
     expect((await login(ids.driverEmail)).statusCode).toBe(200)
   })
 
-  it('suspended: her iki rol de 402 alır', async () => {
+  it('suspended: both roles get 402', async () => {
     await setStatus('suspended')
     expect((await login(ids.adminEmail)).statusCode).toBe(402)
     expect((await login(ids.driverEmail)).statusCode).toBe(402)
   })
 
-  it('şirket pasifse rol fark etmeksizin 403', async () => {
+  it('403 regardless of role when the company is inactive', async () => {
     await app.db.query('UPDATE companies SET is_active = false WHERE id = $1', [ids.companyId])
     await invalidateCompanyAccess(ids.companyId, app.redis)
     expect((await login(ids.driverEmail)).statusCode).toBe(403)
@@ -161,7 +161,7 @@ describe('kademeli askıya alma — giriş kapısı', () => {
   })
 })
 
-describe('kademeli askıya alma — harcama durur', () => {
+describe('graduated suspension — spending stops', () => {
   const deps = (overrides = {}) => ({
     db: app.db,
     redis: app.redis,
@@ -175,9 +175,10 @@ describe('kademeli askıya alma — harcama durur', () => {
   })
 
   beforeEach(async () => {
-    // Durak 41.0/29.0'da. Araç ~2 km kuzeyde: haversine ETA ~5 dk (25 km/sa),
-    // yani bildirim eşiğinin (10 dk) altında ama "geçildi" yarıçapının dışında.
-    // Böylece overdue senaryosunda Google olmadan da bildirim üretilebilir.
+    // The stop is at 41.0/29.0. The vehicle is ~2 km north: haversine ETA ~5 min
+    // (25 km/h), i.e. under the notification threshold (10 min) but outside the
+    // "passed" radius. So a notification can be produced in the overdue scenario
+    // without Google.
     await app.redis.set(
       locationKey(ids.companyId, ids.routeId),
       JSON.stringify({ lat: 41.018, lng: 29.0, ts: Date.now() }),
@@ -192,7 +193,7 @@ describe('kademeli askıya alma — harcama durur', () => {
     )
   })
 
-  it('overdue: Google sorgusu yapılmaz ama bildirim gitmeye devam eder', async () => {
+  it('overdue: no Google query, but notifications still go out', async () => {
     await setStatus('overdue')
 
     let providerCalls = 0
@@ -208,12 +209,12 @@ describe('kademeli askıya alma — harcama durur', () => {
       { companyId: ids.companyId, routeId: ids.routeId, tripId: ids.tripId },
     )
 
-    expect(providerCalls).toBe(0) // faturalı çağrı yok
+    expect(providerCalls).toBe(0) // no billed call
     expect(result.source).toBe('haversine')
-    expect(enqueued).toHaveLength(1) // yolcu yine bilgilendirilir
+    expect(enqueued).toHaveLength(1) // the passenger is still informed
   })
 
-  it('suspended: bildirim de üretilmez', async () => {
+  it('suspended: no notification is produced either', async () => {
     await setStatus('suspended')
 
     const enqueued = []
@@ -226,7 +227,7 @@ describe('kademeli askıya alma — harcama durur', () => {
     expect(enqueued).toHaveLength(0)
   })
 
-  it('suspended: sürücünün konumu reddedilir', async () => {
+  it('suspended: the driver location is rejected', async () => {
     await setStatus('suspended')
     const res = await app.inject({
       method: 'POST',
@@ -238,7 +239,7 @@ describe('kademeli askıya alma — harcama durur', () => {
   })
 })
 
-describe('yolcu kotası (C6)', () => {
+describe('passenger quota (C6)', () => {
   afterAll(async () => {
     await app.db.query('UPDATE companies SET max_passengers = NULL WHERE id = $1', [
       ids.companyId,
@@ -246,8 +247,8 @@ describe('yolcu kotası (C6)', () => {
     await invalidateCompanyAccess(ids.companyId, app.redis)
   })
 
-  it('kota doluysa yeni yolcu 402 ile reddedilir', async () => {
-    // Halihazırda 1 aktif yolcu var
+  it('a new passenger is rejected with 402 when the quota is full', async () => {
+    // There is already 1 active passenger
     await app.db.query('UPDATE companies SET max_passengers = 1 WHERE id = $1', [ids.companyId])
     await invalidateCompanyAccess(ids.companyId, app.redis)
 
@@ -261,7 +262,7 @@ describe('yolcu kotası (C6)', () => {
     expect(res.json().message).toContain('1/1')
   })
 
-  it('kota yükseltilince yolcu eklenebilir', async () => {
+  it('a passenger can be added once the quota is raised', async () => {
     await app.db.query('UPDATE companies SET max_passengers = 5 WHERE id = $1', [ids.companyId])
     await invalidateCompanyAccess(ids.companyId, app.redis)
 
@@ -276,8 +277,8 @@ describe('yolcu kotası (C6)', () => {
   })
 })
 
-describe('refresh token ailesi (D9)', () => {
-  /** Login → refresh cookie'sini çıkarır. */
+describe('refresh token family (D9)', () => {
+  /** Login -> extracts the refresh cookie. */
   async function loginCookie(email) {
     const res = await login(email)
     expect(res.statusCode).toBe(200)
@@ -292,7 +293,7 @@ describe('refresh token ailesi (D9)', () => {
       cookies: { refreshToken: cookie },
     })
 
-  it('rotasyon çalışır: yeni token geçerli, eskisi artık kabul edilmez', async () => {
+  it('rotation works: the new token is valid, the old one is no longer accepted', async () => {
     const first = await loginCookie(ids.driverEmail)
 
     const rotated = await refresh(first)
@@ -303,25 +304,25 @@ describe('refresh token ailesi (D9)', () => {
     expect((await refresh(second)).statusCode).toBe(200)
   })
 
-  it('iptal edilmiş token yeniden kullanılırsa tüm aile düşer', async () => {
+  it('reusing a revoked token drops the whole family', async () => {
     const first = await loginCookie(ids.driverEmail)
 
     const rotated = await refresh(first)
     expect(rotated.statusCode).toBe(200)
     const second = rotated.cookies.find((c) => c.name === 'refreshToken').value
 
-    // Çalınmış kopya: rotasyonla iptal edilmiş olan eski token tekrar sunuluyor
+    // Stolen copy: the old token, already revoked by rotation, is presented again
     const replay = await refresh(first)
     expect(replay.statusCode).toBe(401)
 
-    // Hırsızlık tespit edildi — meşru oturum da sonlandırılmalı, aksi halde
-    // saldırgan yenilemeye devam ederken kullanıcı hiçbir şey fark etmez
+    // Theft detected — the legitimate session must end too, otherwise the
+    // attacker keeps refreshing while the user notices nothing
     expect((await refresh(second)).statusCode).toBe(401)
   })
 })
 
-describe('ödeme defteri (C4)', () => {
-  it('ödeme alındı işaretlemesi geçmişe kayıt düşer', async () => {
+describe('payment ledger (C4)', () => {
+  it('marking payment received writes a history row', async () => {
     const superAuth = {
       authorization: `Bearer ${app.jwt.sign({
         sub: ids.superAdminId,
