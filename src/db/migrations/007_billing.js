@@ -1,34 +1,33 @@
 /**
- * Faz C — gelir koruması.
+ * Phase C — revenue protection.
  *
- * Faz 8'de ödeme takibi iki durumlu bir bayraktan (active/overdue) ve bir
- * login kapısından ibaretti: askıya alınan şirketin sürücüsü konum
- * göndermeye, ETA hesaplatmaya ve yolcularına gerçek SMS/Telegram
- * göndertmeye devam ediyordu. Yani "askıya alma" harcamayı hiç durdurmuyordu.
+ * In Phase 8, payment tracking was just a two-state flag (active/overdue) and a
+ * login gate: a suspended company's driver kept sending locations, kept
+ * triggering ETA computation, and kept getting real SMS/Telegram sent to its
+ * passengers. In other words, "suspension" never stopped the spending.
  *
- * Kademeli model:
+ * Graduated model:
  *   active    — normal
- *   overdue   — company_admin girişi kapanır, Google sorgusu durur (haversine'e
- *               düşülür). Sürücü ve bildirimler çalışmaya devam eder: yolcu
- *               ödeme ilişkisinin tarafı değil.
- *   suspended — tüm girişler kapanır, konum ingest reddedilir, bildirim gitmez.
+ *   overdue   — company_admin login closes, Google queries stop (falls back to
+ *               haversine). Driver and notifications keep working: the passenger
+ *               is not a party to the payment relationship.
+ *   suspended — all logins close, location ingest is rejected, no notifications sent.
  *
- * Ayrıca:
- *   companies.max_passengers — yolcu başına fiyatlandırma için kota
- *   company_payments         — ödeme defteri; "Ödeme Alındı" tıklaması artık
- *                              last_payment_date'i üzerine yazıp geçmişi
- *                              kaybetmiyor
+ * Also:
+ *   companies.max_passengers — quota for per-passenger pricing
+ *   company_payments         — payment ledger; a "Payment Received" click no
+ *                              longer overwrites last_payment_date and loses history
  */
 
 export const up = (pgm) => {
-  // payment_status'e 'suspended' eklenir
+  // add 'suspended' to payment_status
   pgm.dropConstraint('companies', 'companies_payment_status_check')
   pgm.addConstraint('companies', 'companies_payment_status_check', {
     check: "payment_status IN ('active', 'overdue', 'suspended')",
   })
 
   pgm.addColumns('companies', {
-    // NULL = sınırsız (mevcut şirketler etkilenmesin)
+    // NULL = unlimited (existing companies are unaffected)
     max_passengers: { type: 'integer' },
   })
 
@@ -49,7 +48,7 @@ export const up = (pgm) => {
     paid_at: { type: 'timestamptz', notNull: true, default: pgm.func('now()') },
     period_start: { type: 'timestamptz' },
     period_end: { type: 'timestamptz' },
-    // Kimin işaretlediği denetim için kalmalı; kullanıcı silinse de kayıt durur
+    // Who marked it must stay for audit; the row survives even if the user is deleted
     recorded_by: { type: 'uuid', references: 'users', onDelete: 'SET NULL' },
     note: { type: 'text' },
     created_at: {
@@ -63,7 +62,7 @@ export const up = (pgm) => {
     name: 'company_payments_company_paid_idx',
   })
 
-  // Vadesi geçmiş şirketleri bulan günlük iş bu index'i kullanır
+  // The daily job that finds overdue companies uses this index
   pgm.createIndex('companies', 'next_due_date', {
     where: "payment_status = 'active'",
     name: 'companies_active_due_idx',
@@ -75,7 +74,7 @@ export const down = (pgm) => {
   pgm.dropTable('company_payments')
   pgm.dropColumns('companies', ['max_passengers'])
 
-  // 'suspended' şirketler geri alınamayacağı için önce 'overdue'ya çekilir
+  // 'suspended' companies cannot be represented after rollback, so pull them to 'overdue' first
   pgm.sql(`UPDATE companies SET payment_status = 'overdue' WHERE payment_status = 'suspended'`)
   pgm.dropConstraint('companies', 'companies_payment_status_check')
   pgm.addConstraint('companies', 'companies_payment_status_check', {

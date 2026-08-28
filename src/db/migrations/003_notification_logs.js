@@ -1,7 +1,7 @@
 /**
- * Faz 3/4 — bildirim denetim kaydı.
- * Append-only log: her gönderim denemesi (başarılı/başarısız) bir satır.
- * Faz 7 monitoring/raporlama bu tablodan beslenecek.
+ * Phase 3/4 — notification audit log.
+ * Append-only log: one row per send attempt (success/failure).
+ * Phase 7 monitoring/reporting is fed from this table.
  */
 
 export const up = (pgm) => {

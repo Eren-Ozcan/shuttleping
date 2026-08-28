@@ -1,16 +1,16 @@
 /**
- * Faz A — sefer (trip) modeli.
+ * Phase A — the trip model.
  *
- * Önceki tasarımda "sefer" kavramı yoktu: routes.is_active hem soft-delete
- * hem "araç şu an yolda" anlamına geliyordu, tekrar-bildirim koruması ise
- * 45 dk'lık Redis dedup TTL'ine bırakılmıştı. Artık her vardiya bir trips
- * satırıdır; durak bazlı bildirim durumu trip_stops.state'te tutulur.
+ * The previous design had no concept of a "trip": routes.is_active meant both
+ * soft-delete and "the vehicle is on the road right now", and repeat-notification
+ * protection was left to a 45-minute Redis dedup TTL. Now every shift is a
+ * trips row; per-stop notification state is kept in trip_stops.state.
  *
- *   trips       — sürücünün başlattığı tek bir vardiya (active/completed/abandoned)
- *   trip_stops  — sefer açılırken stops'tan alınan snapshot; bildirim durumu
+ *   trips       — a single shift started by a driver (active/completed/abandoned)
+ *   trip_stops  — a snapshot taken from stops when the trip opens; notification state
  *
- * location_history ve notification_logs'a nullable trip_id eklenir (eski
- * kayıtlar NULL kalır; yeni kayıtlar her zaman dolu gelir).
+ * A nullable trip_id is added to location_history and notification_logs (old
+ * rows stay NULL; new rows always arrive populated).
  */
 
 export const up = (pgm) => {
@@ -59,7 +59,7 @@ export const up = (pgm) => {
     },
   })
 
-  // Güzergah başına aynı anda tek aktif sefer
+  // One active trip per route at a time
   pgm.createIndex('trips', 'route_id', {
     unique: true,
     where: "status = 'active'",
@@ -68,7 +68,7 @@ export const up = (pgm) => {
   pgm.createIndex('trips', ['company_id', 'started_at'], {
     name: 'trips_company_started_idx',
   })
-  // Abandoned-toplayıcı ve konum ingest bu partial index'i kullanır
+  // The abandoned-trip sweep and location ingest use this partial index
   pgm.createIndex('trips', 'driver_id', {
     where: "status = 'active'",
     name: 'trips_driver_active_idx',
@@ -127,9 +127,10 @@ export const up = (pgm) => {
   })
 
   // ── trip_notifications ─────────────────────────────────────────────────────
-  // Yolcu bazlı bildirim dedup'ı. Eskiden 45 dk'lık Redis NX anahtarıydı;
-  // artık sefere bağlı ve kalıcı — Redis flush edilse bile mükerrer bildirim
-  // patlaması olmaz, aynı gün ikinci sefer yeni trip_id ile normal bildirir.
+  // Per-passenger notification dedup. It used to be a 45-minute Redis NX key;
+  // now it is trip-scoped and persistent — even if Redis is flushed there is no
+  // burst of duplicate notifications, and a second trip the same day notifies
+  // normally with a new trip_id.
   pgm.createTable('trip_notifications', {
     id: {
       type: 'uuid',
@@ -172,7 +173,7 @@ export const up = (pgm) => {
     unique: ['trip_id', 'passenger_id'],
   })
 
-  // ── geriye dönük bağlar ────────────────────────────────────────────────────
+  // ── backward links ─────────────────────────────────────────────────────────
   pgm.addColumns('location_history', {
     trip_id: { type: 'uuid', references: 'trips', onDelete: 'SET NULL' },
   })

@@ -1,12 +1,12 @@
 /**
- * Faz 1 başlangıç şeması:
- *   companies  — multi-tenant kök
+ * Phase 1 initial schema:
+ *   companies  — multi-tenant root
  *   users      — super_admin / company_admin / driver
  *   refresh_tokens — opaque refresh token store
  *
- * Kurallar:
- *   - Fiziksel silme yok: is_active = false
- *   - Tüm timestamp'ler TIMESTAMPTZ
+ * Rules:
+ *   - No physical delete: is_active = false
+ *   - All timestamps are TIMESTAMPTZ
  *   - PK: uuid_generate_v4()
  */
 
@@ -42,7 +42,7 @@ export const up = (pgm) => {
       primaryKey: true,
       default: pgm.func('uuid_generate_v4()'),
     },
-    // super_admin için NULL olabilir
+    // may be NULL for super_admin
     company_id: {
       type: 'uuid',
       references: 'companies',

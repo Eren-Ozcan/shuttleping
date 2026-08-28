@@ -1,7 +1,7 @@
 /**
- * Faz 8 (basit sürüm): ödeme elden/IBAN alınıyor, gateway entegrasyonu yok.
- * super_admin panelden manuel işaretler; gecikmiş şirketlerin
- * company_admin/driver girişleri auth katmanında bloklanır.
+ * Phase 8 (simple version): payment is taken in cash / by bank transfer, no
+ * gateway integration. super_admin marks it manually from the panel; for
+ * overdue companies, company_admin/driver logins are blocked in the auth layer.
  */
 
 export const up = (pgm) => {

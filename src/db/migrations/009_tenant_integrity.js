@@ -1,30 +1,28 @@
 /**
- * Faz E1/E13 — tenant bütünlüğü ve index temizliği.
+ * Phase E1/E13 — tenant integrity and index cleanup.
  *
- * 002'nin başlığı company_id'nin "izolasyon sorguları için denormalize"
- * edildiğini söylüyor, ama tutarlılığını hiçbir şey zorlamıyordu: çocuk
- * tablolar hem company_id hem üst FK taşıyor, FK'lar yalnızca (id)'ye
- * bakıyordu. Yanlış company_id yazan tek bir bug, satırı sessizce başka
- * kiracıya görünür kılardı ve history sorgusundaki join'in ikinci bir
- * savunması yoktu.
+ * The 002 header says company_id is "denormalized for isolation queries", but
+ * nothing enforced its consistency: child tables carry both company_id and the
+ * parent FK, and the FKs only referenced (id). A single bug writing the wrong
+ * company_id would silently make a row visible to another tenant, and the join
+ * in the history query had no second line of defense.
  *
- * Çözüm: üst tablolarda (id, company_id) UNIQUE + çocuklarda bileşik FK.
- * Artık uyuşmayan bir company_id veritabanı seviyesinde reddedilir.
+ * Fix: (id, company_id) UNIQUE on the parent tables + a composite FK on the
+ * children. A mismatched company_id is now rejected at the database level.
  *
- * Ayrıca index bakımı:
- *   - UNIQUE kısıtın zaten kapsadığı tekrar eden index'ler kaldırılır
- *     (users.email, refresh_tokens.token_hash) — iki yazma-yoğun aramada
- *     bedava maliyet
- *   - vehicles.company_id, (company_id, plate) UNIQUE'inin soldan öneki
- *   - location_history.company_id tek başına hiçbir sorguda kullanılmıyor
- *     (okuma yolu her zaman route_id + company_id filtreliyor)
- *   - eksik olanlar eklenir: routes.vehicle_id (ON DELETE SET NULL seq scan
- *     yapıyordu), notification_logs (company_id, created_at DESC),
+ * Also index maintenance:
+ *   - drop redundant indexes already covered by a UNIQUE constraint
+ *     (users.email, refresh_tokens.token_hash) — free cost on two write-heavy lookups
+ *   - vehicles.company_id is a left prefix of the (company_id, plate) UNIQUE
+ *   - location_history.company_id alone is used by no query
+ *     (the read path always filters route_id + company_id)
+ *   - add the missing ones: routes.vehicle_id (ON DELETE SET NULL was doing a
+ *     seq scan), notification_logs (company_id, created_at DESC),
  *     users (company_id, role), passengers (company_id, stop_id)
  */
 
 export const up = (pgm) => {
-  // ── Bileşik FK için gereken UNIQUE anahtarlar ──────────────────────────────
+  // ── UNIQUE keys required for the composite FKs ─────────────────────────────
   pgm.addConstraint('companies', 'companies_id_unique', { unique: ['id'] })
   pgm.addConstraint('routes', 'routes_id_company_unique', { unique: ['id', 'company_id'] })
   pgm.addConstraint('stops', 'stops_id_company_unique', { unique: ['id', 'company_id'] })
@@ -33,7 +31,7 @@ export const up = (pgm) => {
   })
   pgm.addConstraint('trips', 'trips_id_company_unique', { unique: ['id', 'company_id'] })
 
-  // ── Çocuk tablolarda bileşik FK ────────────────────────────────────────────
+  // ── Composite FK on the child tables ──────────────────────────────────────
   pgm.addConstraint('stops', 'stops_route_company_fk', {
     foreignKeys: {
       columns: ['route_id', 'company_id'],
@@ -77,23 +75,23 @@ export const up = (pgm) => {
     },
   })
 
-  // ── Tekrar eden / kullanılmayan index'ler ──────────────────────────────────
-  pgm.dropIndex('users', 'email') // email zaten UNIQUE
-  pgm.dropIndex('refresh_tokens', 'token_hash') // token_hash zaten UNIQUE
-  pgm.dropIndex('vehicles', 'company_id') // (company_id, plate) UNIQUE kapsıyor
-  pgm.dropIndex('location_history', 'company_id') // düşük kardinalite, kullanılmıyor
+  // ── Redundant / unused indexes ────────────────────────────────────────────
+  pgm.dropIndex('users', 'email') // email is already UNIQUE
+  pgm.dropIndex('refresh_tokens', 'token_hash') // token_hash is already UNIQUE
+  pgm.dropIndex('vehicles', 'company_id') // covered by the (company_id, plate) UNIQUE
+  pgm.dropIndex('location_history', 'company_id') // low cardinality, unused
 
-  // ── Eksik index'ler ────────────────────────────────────────────────────────
+  // ── Missing indexes ──────────────────────────────────────────────────────
   pgm.createIndex('routes', 'vehicle_id', { name: 'routes_vehicle_idx' })
   pgm.createIndex('users', ['company_id', 'role'], { name: 'users_company_role_idx' })
   pgm.createIndex('passengers', ['company_id', 'stop_id'], {
     name: 'passengers_company_stop_idx',
   })
-  // Denetim listesi: company_id filtresi + created_at DESC sıralama
+  // Audit list: company_id filter + created_at DESC ordering
   pgm.createIndex('notification_logs', [{ name: 'company_id' }, { name: 'created_at', sort: 'DESC' }], {
     name: 'notification_logs_company_created_idx',
   })
-  // Saklama süresi temizliği bu index'i kullanır
+  // The retention cleanup uses this index
   pgm.createIndex('location_history', 'recorded_at', {
     name: 'location_history_recorded_idx',
   })

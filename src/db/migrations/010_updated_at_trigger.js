@@ -1,9 +1,9 @@
 /**
- * Faz E11 — updated_at'i trigger'a devret.
+ * Phase E11 — delegate updated_at to a trigger.
  *
- * updated_at altı ayrı route'ta elle yazılıyordu (`SET ..., updated_at = now()`).
- * Bir yerde unutulması sessizce denetim sırasını bozar ve fark edilmesi zordur.
- * Artık veritabanı garanti ediyor; route'lardaki elle yazım kaldırıldı.
+ * updated_at was written by hand in six separate routes (`SET ..., updated_at = now()`).
+ * Forgetting it in one place silently corrupts the audit order and is hard to spot.
+ * The database now guarantees it; the manual writes in the routes were removed.
  */
 
 const TABLES = ['companies', 'users', 'vehicles', 'routes', 'stops', 'passengers']

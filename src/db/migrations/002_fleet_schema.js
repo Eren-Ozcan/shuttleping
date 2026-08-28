@@ -1,14 +1,14 @@
 /**
- * Faz 1 alan modeli:
- *   vehicles   — şirket servis araçları
- *   routes     — güzergahlar (sürücü + araç ataması)
- *   stops      — güzergah durakları (sequence sıralı, lat/lng)
- *   passengers — durağa bağlı yolcular + bildirim kanalı tercihi
+ * Phase 1 domain model:
+ *   vehicles   — a company's shuttle vehicles
+ *   routes     — routes (driver + vehicle assignment)
+ *   stops      — route stops (sequence-ordered, lat/lng)
+ *   passengers — passengers attached to a stop + notification channel preference
  *
- * Kurallar:
- *   - Her tabloda company_id (multi-tenant izolasyon sorguları için denormalize)
- *   - Fiziksel silme yok: is_active = false
- *   - notification_channel ileride 'push' eklenecek şekilde CHECK ile sınırlı
+ * Rules:
+ *   - Every table carries company_id (denormalized for multi-tenant isolation queries)
+ *   - No physical delete: is_active = false
+ *   - notification_channel is bounded by a CHECK so 'push' can be added later
  */
 
 export const up = (pgm) => {
@@ -59,7 +59,7 @@ export const up = (pgm) => {
       onDelete: 'RESTRICT',
     },
     name: { type: 'text', notNull: true },
-    // Atamalar opsiyonel: güzergah önce tanımlanır, sürücü/araç sonra bağlanır
+    // Assignments are optional: the route is defined first, driver/vehicle attached later
     driver_id: { type: 'uuid', references: 'users', onDelete: 'SET NULL' },
     vehicle_id: { type: 'uuid', references: 'vehicles', onDelete: 'SET NULL' },
     is_active: { type: 'boolean', notNull: true, default: true },
@@ -116,7 +116,7 @@ export const up = (pgm) => {
 
   pgm.createIndex('stops', 'company_id')
   pgm.createIndex('stops', 'route_id')
-  // Pasif duraklar sequence numarasını bloke etmesin
+  // Inactive stops must not block a sequence number
   pgm.createIndex('stops', ['route_id', 'sequence'], {
     unique: true,
     where: 'is_active = true',

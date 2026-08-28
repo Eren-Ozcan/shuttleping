@@ -1,8 +1,8 @@
 /**
- * Faz 7 — sefer geçmişi.
- * Her konum ping'i append-only olarak saklanır; geçmiş sefer izleme ve
- * raporlama bu tablodan beslenir. Yüksek hacim beklenen tablo — sorgular
- * her zaman (route_id, recorded_at) aralığıyla gelmeli.
+ * Phase 7 — trip history.
+ * Every location ping is stored append-only; past-trip tracking and reporting
+ * are fed from this table. A high-volume table is expected — queries must
+ * always come with a (route_id, recorded_at) range.
  */
 
 export const up = (pgm) => {

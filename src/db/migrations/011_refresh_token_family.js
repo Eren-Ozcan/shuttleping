@@ -1,30 +1,29 @@
 /**
- * Faz D9 — refresh token ailesi ve yeniden kullanım tespiti.
+ * Phase D9 — refresh token family and reuse detection.
  *
- * Rotasyon bugüne kadar "eskisini SİL, yenisini yaz" şeklindeydi. Çalınmış
- * bir token yeniden kullanıldığında sadece 401 alıyordu; meşru oturum
- * çalışmaya devam ediyor, hırsızlık ne görülüyor ne de geri alınabiliyordu.
+ * Rotation used to be "DELETE the old one, write the new one". When a stolen
+ * token was reused it just got a 401; the legitimate session kept working, and
+ * the theft was neither visible nor revocable.
  *
- * Artık token satırı silinmiyor, `revoked_at` ile işaretleniyor ve aynı
- * ailede (`family_id`) kalıyor. İptal edilmiş bir token tekrar sunulursa
- * bu, token'ın kopyalandığı anlamına gelir: tüm aile iptal edilir, yani
- * hem hırsız hem meşru oturum düşer ve kullanıcı yeniden giriş yapar.
+ * Now the token row is not deleted, it is marked with `revoked_at` and stays in
+ * the same family (`family_id`). If a revoked token is presented again, the
+ * token has been copied: the whole family is revoked, so both the thief's and
+ * the legitimate session drop and the user logs in again.
  *
- * Ayrıca süresi geçmiş satırlar için temizlik gerekiyordu — tablo bugüne
- * kadar sınırsız büyüyordu.
+ * Cleanup for expired rows was also needed — the table was growing without bound.
  */
 
 export const up = (pgm) => {
   pgm.addColumns('refresh_tokens', {
-    // Rotasyon zinciri: ilk giriş bir aile açar, her yenileme aynı ailede kalır
+    // Rotation chain: the first login opens a family, every refresh stays in it
     family_id: { type: 'uuid', notNull: true, default: pgm.func('uuid_generate_v4()') },
     revoked_at: { type: 'timestamptz' },
-    // Denetim: hangi token'ın yerine geçtiği
+    // Audit: which token this one replaced
     replaced_by: { type: 'uuid', references: 'refresh_tokens', onDelete: 'SET NULL' },
   })
 
   pgm.createIndex('refresh_tokens', 'family_id', { name: 'refresh_tokens_family_idx' })
-  // Temizlik işi bu index'i kullanır
+  // The cleanup job uses this index
   pgm.createIndex('refresh_tokens', 'expires_at', { name: 'refresh_tokens_expires_idx' })
 }
 

@@ -1,12 +1,12 @@
 /**
- * Faz F3 — prova (dry-run) modu.
+ * Phase F3 — dry-run mode.
  *
- * Bugüne kadar bildirim akışını test etmek, gerçek yolcuya gerçek SMS/Telegram
- * göndermek demekti (PILOT-READINESS R-2). Artık:
- *   - global `NOTIFICATION_DRY_RUN` env bayrağı, ve
- *   - şirket bazında `companies.dry_run`
- * Biri açıksa gönderim yapılmaz; kayıt notification_logs'a 'dry_run'
- * durumuyla düşer, böylece denetim kaydında canlı gönderimden ayrılır.
+ * Until now, testing the notification flow meant sending real SMS/Telegram to a
+ * real passenger (PILOT-READINESS R-2). Now:
+ *   - the global `NOTIFICATION_DRY_RUN` env flag, and
+ *   - the per-company `companies.dry_run`
+ * If either is on, nothing is sent; the record lands in notification_logs with
+ * status 'dry_run', so it is separated from a live send in the audit log.
  */
 
 export const up = (pgm) => {
