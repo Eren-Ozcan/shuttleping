@@ -1,5 +1,5 @@
-// super_admin destek erişimi için (E12): hangi kiracının verisi okunacak.
-// Şemalarda tanımlı olmalı, aksi halde removeAdditional bunu düşürür.
+// For super_admin support access (E12): which tenant's data to read.
+// Must be declared in the schema, otherwise removeAdditional strips it.
 const supportCompanyId = { companyId: { type: 'string', format: 'uuid' } }
 
 const dateTimeRange = {

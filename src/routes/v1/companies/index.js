@@ -21,7 +21,7 @@ const COMPANY_COLUMNS = `id, name, slug, is_active AS "isActive",
 export default async function companyRoutes(fastify) {
   /**
    * GET /api/v1/companies
-   * Tüm şirketleri listeler. Sadece super_admin erişebilir.
+   * Lists all companies. Only super_admin can access it.
    */
   fastify.get(
     '/',
@@ -47,7 +47,7 @@ export default async function companyRoutes(fastify) {
 
   /**
    * POST /api/v1/companies
-   * Yeni şirket oluşturur. Sadece super_admin.
+   * Creates a new company. super_admin only.
    */
   fastify.post(
     '/',
@@ -78,9 +78,9 @@ export default async function companyRoutes(fastify) {
 
   /**
    * PATCH /api/v1/companies/:id/payment-status
-   * Ödeme elden/IBAN alınıyor (gateway yok) — süper admin manuel işaretler.
-   * 'active': last_payment_date = now(), next_due_date verilmezse +30 gün.
-   * 'overdue': company_admin/driver girişleri auth katmanında bloklanır.
+   * Payment is taken in cash / by bank transfer (no gateway) — super_admin marks it manually.
+   * 'active': last_payment_date = now(), next_due_date defaults to +30 days if not given.
+   * 'overdue': company_admin/driver logins are blocked in the auth layer.
    */
   fastify.patch(
     '/:id/payment-status',
@@ -115,8 +115,8 @@ export default async function companyRoutes(fastify) {
           )
           company = rows[0]
 
-          // Ödeme defteri (C4): eskiden last_payment_date üzerine yazılıyor,
-          // tutar/kim işaretledi/hangi dönem hiç saklanmıyordu
+          // Payment ledger (C4): previously last_payment_date was overwritten,
+          // and amount / who marked it / which period were never stored
           await client.query(
             `INSERT INTO company_payments
                (company_id, amount, period_start, period_end, recorded_by, note)
@@ -149,8 +149,8 @@ export default async function companyRoutes(fastify) {
         client.release()
       }
 
-      // Askıya alma anında etkili olmalı: mevcut oturumlar 15 dk daha
-      // yaşamasın, ETA/bildirim worker'ları eski cache'i okumasın
+      // Suspension must take effect immediately: existing sessions must not
+      // live another 15 min, and the ETA/notification workers must not read stale cache
       if (paymentStatus === 'suspended') {
         await fastify.db.query(
           `DELETE FROM refresh_tokens
@@ -166,7 +166,7 @@ export default async function companyRoutes(fastify) {
 
   /**
    * PATCH /api/v1/companies/:id
-   * Şirket adı, aktiflik ve yolcu kotası. Sadece super_admin.
+   * Company name, active flag and passenger quota. super_admin only.
    */
   fastify.patch(
     '/:id',
@@ -203,7 +203,7 @@ export default async function companyRoutes(fastify) {
 
   /**
    * GET /api/v1/companies/:id/payments
-   * Ödeme geçmişi. Sadece super_admin.
+   * Payment history. super_admin only.
    */
   fastify.get(
     '/:id/payments',
@@ -226,8 +226,8 @@ export default async function companyRoutes(fastify) {
 
   /**
    * POST /api/v1/companies/:id/admins
-   * Şirketin (ilk) yöneticisini oluşturur. Sadece super_admin —
-   * onboarding akışı: şirket aç → yöneticisini ata → gerisini o yönetir.
+   * Creates the company's (first) admin. super_admin only —
+   * onboarding flow: create a company -> assign its admin -> they manage the rest.
    */
   fastify.post(
     '/:id/admins',

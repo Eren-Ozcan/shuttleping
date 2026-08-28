@@ -5,7 +5,7 @@ export const createCompanySchema = {
     additionalProperties: false,
     properties: {
       name: { type: 'string', minLength: 2, maxLength: 100 },
-      // Sadece küçük harf, rakam, tire
+      // Lowercase letters, digits and hyphen only
       slug: { type: 'string', minLength: 2, maxLength: 50, pattern: '^[a-z0-9-]+$' },
     },
   },
@@ -43,9 +43,9 @@ export const updatePaymentStatusSchema = {
     additionalProperties: false,
     properties: {
       paymentStatus: { type: 'string', enum: ['active', 'overdue', 'suspended'] },
-      // Sadece paymentStatus: 'active' ile birlikte anlamlı; verilmezse +30 gün varsayılır
+      // Only meaningful together with paymentStatus: 'active'; defaults to +30 days if omitted
       nextDueDate: { type: 'string', format: 'date-time' },
-      // 'active' ile birlikte ödeme defterine kayıt düşer
+      // Together with 'active', a row is written to the payment ledger
       amount: { type: 'number', minimum: 0 },
       note: { type: 'string', maxLength: 500 },
     },
@@ -107,9 +107,9 @@ export const updateCompanySchema = {
     properties: {
       name: { type: 'string', minLength: 2, maxLength: 100 },
       isActive: { type: 'boolean' },
-      // null = sınırsız
+      // null = unlimited
       maxPassengers: { type: ['integer', 'null'], minimum: 1 },
-      // Prova modu: bu şirketin bildirimleri gerçekten gönderilmez
+      // Dry-run mode: this company's notifications are never actually sent
       dryRun: { type: 'boolean' },
     },
   },

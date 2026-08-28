@@ -13,13 +13,13 @@ const TRIP_COLUMNS = `t.id, t.route_id AS "routeId", r.name AS "routeName",
 
 export default async function tripRoutes(fastify) {
   const driverOnly = [fastify.requireRole(['driver'])]
-  // Sefer geçmişi destek için super_admin'e de açık (E12)
+  // Trip history is also open to super_admin for support (E12)
   const supportRead = [fastify.allowSupportRead(['company_admin'])]
 
   /**
    * POST /api/v1/trips/start
-   * Sürücü vardiyayı başlatır. Aktif seferi zaten varsa onu döndürür (idempotent).
-   * Güzergah seçimi deterministik: en eski oluşturulan aktif güzergah.
+   * The driver starts a shift. If an active trip already exists, it is returned (idempotent).
+   * Route selection is deterministic: the oldest-created active route.
    */
   fastify.post(
     '/start',
@@ -60,7 +60,7 @@ export default async function tripRoutes(fastify) {
         )
         const tripId = tripRows[0].id
 
-        // Sefer açılırken aktif duraklar snapshot'lanır
+        // Snapshot the active stops when the trip is opened
         await client.query(
           `INSERT INTO trip_stops (company_id, trip_id, stop_id, sequence)
            SELECT $1, $2, id, sequence FROM stops
@@ -79,7 +79,7 @@ export default async function tripRoutes(fastify) {
         return reply.code(201).send(rows[0])
       } catch (err) {
         await client.query('ROLLBACK')
-        // trips_route_active_unique — başka bir sürücü aynı güzergahta sefer açmış
+        // trips_route_active_unique — another driver already opened a trip on this route
         if (err.code === '23505') {
           return reply.conflict('Bu güzergahta zaten aktif bir sefer var')
         }
@@ -92,7 +92,7 @@ export default async function tripRoutes(fastify) {
 
   /**
    * POST /api/v1/trips/end
-   * Aktif seferi tamamlar ve güzergahın canlı Redis anahtarlarını temizler.
+   * Completes the active trip and clears the route's live Redis keys.
    */
   fastify.post(
     '/end',
@@ -121,7 +121,7 @@ export default async function tripRoutes(fastify) {
 
   /**
    * GET /api/v1/trips
-   * Sefer geçmişi listesi (company_admin).
+   * Trip history list (company_admin).
    */
   fastify.get(
     '/',
@@ -163,7 +163,7 @@ export default async function tripRoutes(fastify) {
 
   /**
    * GET /api/v1/trips/:id
-   * Tek sefer + durak durumları + bildirim özeti.
+   * A single trip + stop states + notification summary.
    */
   fastify.get(
     '/:id',

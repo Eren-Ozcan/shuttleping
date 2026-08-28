@@ -11,14 +11,14 @@ import { enqueueEtaJob } from '../../../queues/index.js'
 import { getCompanyAccess, canIngestLocation } from '../../../services/billing.service.js'
 import { env } from '../../../config/env.js'
 
-// Son konum Redis'te tutulur; araç yayın kesilirse 5 dk sonra "çevrimdışı" sayılır
+// The last location lives in Redis; if the vehicle stops broadcasting it is "offline" after 5 min
 const LOCATION_TTL_SECONDS = 300
-// SSE bileti kısa ömürlü olmalı — sadece EventSource'un açılmasına yetecek kadar
+// The SSE ticket must be short-lived — just long enough to open the EventSource
 const STREAM_TICKET_TTL_SECONDS = 60
 const streamTicketKey = (ticket) => `streamticket:${ticket}`
 
 export default async function locationRoutes(fastify) {
-  // Açık SSE akışlarının kapatıcıları; kapanışta hepsi sonlandırılır (E8)
+  // Closers for the open SSE streams; all are terminated on shutdown (E8)
   const openStreams = new Set()
   fastify.addHook('onClose', async () => {
     for (const close of [...openStreams]) close()
@@ -26,17 +26,17 @@ export default async function locationRoutes(fastify) {
 
   /**
    * POST /api/v1/locations
-   * Sürücü anlık konum gönderir. Konum yalnızca AKTİF SEFER varken kabul edilir
-   * (POST /api/v1/trips/start ile açılır); son konum Redis'e yazılır, sefer
-   * geçmişine iz düşülür ve ETA worker'ı için kuyruğa job atılır.
+   * The driver sends a live location. It is only accepted while an ACTIVE TRIP
+   * exists (opened via POST /api/v1/trips/start); the last location is written
+   * to Redis, a trace is appended to trip history, and a job is queued for the ETA worker.
    */
   fastify.post(
     '/',
     {
       schema: ingestLocationSchema,
       onRequest: [fastify.requireRole(['driver'])],
-      // İstemci 10 sn'de bir gönderiyor; sürücü başına dakikada 12 makul üst
-      // sınır. Her ping DB yazısı + potansiyel faturalı Google çağrısı (D1)
+      // The client sends every 10s; 12/minute per driver is a sane ceiling.
+      // Each ping is a DB write + a potentially billed Google call (D1)
       config: {
         rateLimit: { max: env.RATE_LIMIT_LOCATION_MAX, timeWindow: '1 minute' },
       },
@@ -46,8 +46,8 @@ export default async function locationRoutes(fastify) {
       const companyId = request.user.companyId
       const driverId = request.user.sub
 
-      // Askıya alınmış şirkette konum kabul edilmez — sefer geçmişi büyümeye
-      // ve ETA/bildirim maliyeti akmaya devam etmesin (C1)
+      // No location is accepted for a suspended company — so trip history does
+      // not keep growing and ETA/notification cost does not keep flowing (C1)
       const access = await getCompanyAccess(companyId, fastify.redis)
       if (!canIngestLocation(access)) {
         return reply.paymentRequired('Şirket hesabı askıya alındı')
@@ -64,9 +64,9 @@ export default async function locationRoutes(fastify) {
 
       const tripId = rows[0].id
       const routeId = rows[0].route_id
-      // Offline buffer flush'ı: eski bir fix canlı konumu ve ETA'yı tetiklemesin,
-      // sadece geçmişe işlenir. Bağlantının döndüğünü kanıtladığı için last_ping
-      // yine tazelenir (yanlış "abandoned" işaretlemesini önler).
+      // Offline buffer flush: an old fix must not trigger the live location and
+      // ETA, only be written to history. It still refreshes last_ping (which
+      // proves the connection is back) — preventing a wrong "abandoned" mark.
       const isBackfill = recordedAt !== undefined
 
       await Promise.all([
@@ -86,7 +86,7 @@ export default async function locationRoutes(fastify) {
               'EX',
               LOCATION_TTL_SECONDS,
             ),
-        // Sefer geçmişi (Faz 7) — append-only iz kaydı
+        // Trip history (Phase 7) — append-only trace record
         fastify.db.query(
           `INSERT INTO location_history
              (company_id, route_id, trip_id, driver_id, lat, lng, speed, heading, recorded_at)
@@ -114,7 +114,7 @@ export default async function locationRoutes(fastify) {
 
   /**
    * GET /api/v1/locations/:routeId
-   * Güzergahtaki aracın son bilinen konumu (admin panel harita).
+   * The last known position of the vehicle on a route (admin panel map).
    */
   fastify.get(
     '/:routeId',
@@ -130,9 +130,9 @@ export default async function locationRoutes(fastify) {
 
   /**
    * POST /api/v1/locations/:routeId/stream-ticket
-   * SSE için tek kullanımlık, 60 sn ömürlü bilet üretir. EventSource
-   * Authorization header taşıyamadığı için akış bu biletle açılır —
-   * access token URL'e hiç girmez (D2).
+   * Produces a single-use, 60s ticket for SSE. Because EventSource cannot
+   * carry an Authorization header, the stream is opened with this ticket —
+   * the access token never enters the URL (D2).
    */
   fastify.post(
     '/:routeId/stream-ticket',
@@ -141,8 +141,8 @@ export default async function locationRoutes(fastify) {
       const { routeId } = request.params
       const companyId = request.user.companyId
 
-      // Güzergah sahipliği burada, DB'den doğrulanır — akışın izolasyonu
-      // artık yalnızca Redis anahtar isim alanına dayanmıyor (D4)
+      // Route ownership is verified here, from the DB — the stream's isolation
+      // no longer relies only on the Redis key namespace (D4)
       const { rows } = await fastify.db.query(
         'SELECT id FROM routes WHERE id = $1 AND company_id = $2',
         [routeId, companyId],
@@ -162,13 +162,13 @@ export default async function locationRoutes(fastify) {
 
   /**
    * GET /api/v1/locations/:routeId/stream
-   * SSE: konum + ETA'yı 3 sn'de bir yayınlar (canlı harita).
-   * Kimlik doğrulama stream-ticket ile; bilet tek kullanımlıktır.
+   * SSE: pushes location + ETA every 3s (live map).
+   * Authentication is via the stream ticket; the ticket is single-use.
    */
   fastify.get('/:routeId/stream', { schema: streamSchema }, async (request, reply) => {
     const { routeId } = request.params
 
-    // Tek kullanımlık: okunduğu anda silinir, tekrar kullanılamaz
+    // Single-use: deleted the moment it is read, cannot be reused
     const key = streamTicketKey(request.query.ticket)
     const raw = await fastify.redis.get(key)
     if (!raw) return reply.unauthorized('Geçersiz veya süresi dolmuş bilet')
@@ -180,8 +180,8 @@ export default async function locationRoutes(fastify) {
     }
     const { companyId } = granted
 
-    // CORS: gelen Origin'i yansıtmak yerine global politikayla aynı kaynağa
-    // izin ver — hijack edilen yanıt @fastify/cors'u atladığı için elle (D3)
+    // CORS: rather than reflecting the incoming Origin, allow the same origin
+    // as the global policy — a hijacked response bypasses @fastify/cors, so set it by hand (D3)
     const origin = request.headers.origin
     const corsHeaders =
       origin && origin === env.CORS_ORIGIN
@@ -198,7 +198,7 @@ export default async function locationRoutes(fastify) {
       'cache-control': 'no-cache',
       connection: 'keep-alive',
       ...corsHeaders,
-      // Nginx/proxy buffering'i kapat — SSE anında akmalı
+      // Disable nginx/proxy buffering — SSE must flow immediately
       'x-accel-buffering': 'no',
     })
     reply.raw.write('retry: 5000\n\n')
@@ -218,8 +218,8 @@ export default async function locationRoutes(fastify) {
 
     await push()
 
-    // Kapanış kaydı: shutdown sırasında açık akışlar sonlandırılmazsa
-    // fastify.close() asılı kalır ve platform process'i SIGKILL eder (E8)
+    // Shutdown registration: if open streams are not terminated during
+    // shutdown, fastify.close() hangs and the platform SIGKILLs the process (E8)
     let interval = null
     const close = () => {
       if (interval) clearInterval(interval)
@@ -240,7 +240,7 @@ export default async function locationRoutes(fastify) {
 
   /**
    * GET /api/v1/locations/:routeId/eta
-   * ETA worker'ının son hesapladığı durak bazlı varış süreleri.
+   * The per-stop arrival times last computed by the ETA worker.
    */
   fastify.get(
     '/:routeId/eta',

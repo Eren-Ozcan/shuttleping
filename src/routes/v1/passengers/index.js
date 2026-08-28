@@ -18,14 +18,14 @@ const PASSENGER_COLS = [
   'created_at AS "createdAt"',
 ]
 
-/** Kolon listesini opsiyonel tablo alias'ıyla üretir: passengerColumns('p.') */
+/** Builds the column list with an optional table alias: passengerColumns('p.') */
 const passengerColumns = (prefix = '') =>
   PASSENGER_COLS.map((col) => prefix + col).join(', ')
 
 export default async function passengerRoutes(fastify) {
   const adminOnly = [fastify.requireRole(['company_admin'])]
 
-  /** Durağın bu şirkete ait ve aktif olduğunu doğrular. */
+  /** Verifies the stop belongs to this company and is active. */
   async function stopBelongsToCompany(stopId, companyId) {
     const { rows } = await fastify.db.query(
       'SELECT id FROM stops WHERE id = $1 AND company_id = $2 AND is_active = true',
@@ -36,7 +36,7 @@ export default async function passengerRoutes(fastify) {
 
   /**
    * GET /api/v1/passengers
-   * Durak adıyla birlikte listeler (stopId/active filtreli).
+   * Lists passengers with the stop name (filtered by stopId/active).
    */
   fastify.get(
     '/',
@@ -86,7 +86,7 @@ export default async function passengerRoutes(fastify) {
         return reply.badRequest('Durak bulunamadı')
       }
 
-      // Yolcu kotası (C6) — fiyatlandırma yolcu başına, tek anlamlı sınır bu
+      // Passenger quota (C6) — pricing is per passenger, this is the only meaningful limit
       const quota = await checkPassengerQuota(companyId, fastify.redis)
       if (!quota.allowed) {
         return reply.paymentRequired(

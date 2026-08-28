@@ -10,7 +10,7 @@ export default async function userRoutes(fastify) {
 
   /**
    * GET /api/v1/users
-   * Kendi şirketindeki kullanıcıları listeler (role/active filtreli).
+   * Lists users in the caller's company (filtered by role/active).
    */
   fastify.get(
     '/',
@@ -37,7 +37,7 @@ export default async function userRoutes(fastify) {
 
   /**
    * POST /api/v1/users
-   * Kendi şirketine kullanıcı (driver / company_admin) ekler.
+   * Adds a user (driver / company_admin) to the caller's company.
    */
   fastify.post(
     '/',
@@ -65,7 +65,7 @@ export default async function userRoutes(fastify) {
 
   /**
    * PATCH /api/v1/users/:id
-   * Kendi şirketindeki kullanıcıyı günceller (isActive: false = soft delete).
+   * Updates a user in the caller's company (isActive: false = soft delete).
    */
   fastify.patch(
     '/:id',
@@ -90,9 +90,9 @@ export default async function userRoutes(fastify) {
 
       if (!rows[0]) return reply.notFound('Kullanıcı bulunamadı')
 
-      // Şifre değişimi ve pasifleştirme mevcut oturumları sonlandırmalı (C2).
-      // deleteAllUserTokens tanımlıydı ama hiçbir yerden çağrılmıyordu: şifre
-      // değiştirildikten sonra çalınmış bir refresh token 7 gün daha çalışıyordu.
+      // A password change or deactivation must end existing sessions (C2).
+      // deleteAllUserTokens was defined but never called: after a password
+      // change, a stolen refresh token still worked for another 7 days.
       if (password !== undefined || isActive === false) {
         await deleteAllUserTokens(request.params.id)
       }

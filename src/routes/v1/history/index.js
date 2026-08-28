@@ -3,8 +3,8 @@ import { locationHistorySchema, notificationHistorySchema } from './schema.js'
 export default async function historyRoutes(fastify) {
   /**
    * GET /api/v1/history/locations/:routeId
-   * Güzergahın geçmiş konum kayıtları (sefer izi). from/to aralığı ve
-   * limit ile sınırlandırılır; en yeni kayıt önce gelir.
+   * Past location records for a route (trip trace). Bounded by a from/to range
+   * and a limit; newest record first.
    */
   fastify.get(
     '/locations/:routeId',
@@ -42,7 +42,7 @@ export default async function historyRoutes(fastify) {
 
   /**
    * GET /api/v1/history/notifications
-   * Bildirim denetim kaydı; yolcu/durum/tarih filtreleri ile.
+   * Notification audit log; with passenger/status/date filters.
    */
   fastify.get(
     '/notifications',

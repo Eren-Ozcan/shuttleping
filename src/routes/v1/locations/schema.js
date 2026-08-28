@@ -8,7 +8,7 @@ export const ingestLocationSchema = {
       lng: { type: 'number', minimum: -180, maximum: 180 },
       heading: { type: 'number', minimum: 0, maximum: 360 },
       speed: { type: 'number', minimum: 0 },
-      // Offline buffer flush'ında gerçek yakalanma anı (ISO); yoksa now()
+      // Real capture time (ISO) on an offline-buffer flush; otherwise now()
       recordedAt: { type: 'string', format: 'date-time' },
     },
   },
@@ -36,9 +36,9 @@ export const streamSchema = {
     required: ['ticket'],
     additionalProperties: false,
     properties: {
-      // EventSource header taşıyamaz. Access token yerine tek kullanımlık,
-      // kısa ömürlü bilet gönderilir — access token URL'e, proxy loglarına
-      // ve Referer'a hiç girmez (D2).
+      // EventSource cannot carry a header. Instead of the access token, a
+      // single-use short-lived ticket is sent — the access token never enters
+      // the URL, proxy logs or the Referer (D2).
       ticket: { type: 'string', minLength: 16, maxLength: 128 },
     },
   },

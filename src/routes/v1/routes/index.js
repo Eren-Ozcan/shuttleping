@@ -13,11 +13,11 @@ const STOP_COLUMNS = `id, route_id AS "routeId", name, lat, lng, sequence,
 
 export default async function routeRoutes(fastify) {
   const adminOnly = [fastify.requireRole(['company_admin'])]
-  // Salt-okunur uçlar super_admin'e de açık (E12): destek için müşterinin
-  // verisini üründen görebilmek gerekiyor. Yazma yolları kapalı kalır.
+  // Read-only endpoints are also open to super_admin (E12): for support, the
+  // customer's data must be viewable from the product. Write paths stay closed.
   const supportRead = [fastify.allowSupportRead(['company_admin'])]
 
-  /** Güzergahın bu şirkete ait olduğunu doğrular; değilse null döner. */
+  /** Verifies the route belongs to this company; returns null if not. */
   async function findRoute(routeId, companyId) {
     const { rows } = await fastify.db.query(
       'SELECT id FROM routes WHERE id = $1 AND company_id = $2',
@@ -28,7 +28,7 @@ export default async function routeRoutes(fastify) {
 
   /**
    * GET /api/v1/routes
-   * Sürücü adı ve araç plakasıyla birlikte listeler.
+   * Lists routes with the driver name and vehicle plate.
    */
   fastify.get(
     '/',
@@ -77,7 +77,7 @@ export default async function routeRoutes(fastify) {
 
   /**
    * PATCH /api/v1/routes/:id
-   * Ad, sürücü/araç ataması (null = atamayı kaldır), soft delete.
+   * Name, driver/vehicle assignment (null = clear the assignment), soft delete.
    */
   fastify.patch(
     '/:id',
@@ -86,7 +86,7 @@ export default async function routeRoutes(fastify) {
       const { name, driverId, vehicleId, isActive } = request.body
       const companyId = request.user.companyId
 
-      // Atanan sürücü/araç aynı şirkette ve aktif olmalı
+      // The assigned driver/vehicle must be in the same company and active
       if (driverId) {
         const { rows } = await fastify.db.query(
           `SELECT id FROM users
@@ -126,7 +126,7 @@ export default async function routeRoutes(fastify) {
 
   /**
    * GET /api/v1/routes/:id/stops
-   * Durakları sequence sırasıyla listeler.
+   * Lists stops in sequence order.
    */
   fastify.get(
     '/:id/stops',
