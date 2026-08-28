@@ -4,15 +4,15 @@ import { logger } from '../utils/logger.js'
 
 const { Pool } = pg
 
-// Havuz HTTP handler'larıyla worker'lar arasında paylaşılır: ETA worker'ı 5,
-// bildirim worker'ı 10 eşzamanlı iş yürütür, yani tek başlarına 15 tüketici.
-// Sabit 10 ile konum ingest arka plan işlerinin arkasında kuyruğa giriyordu.
+// The pool is shared between HTTP handlers and the workers: the ETA worker
+// runs 5 and the notification worker 10 concurrent jobs, i.e. 15 consumers on
+// their own. With a fixed 10, location ingest was queuing behind background jobs.
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   max: env.DB_POOL_MAX,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  // Kaçak bir sorgu havuzu süresiz tutmasın
+  // Do not let a runaway query hold a connection forever
   statement_timeout: env.DB_STATEMENT_TIMEOUT_MS,
 })
 

@@ -1,8 +1,8 @@
 /**
- * PATCH endpoint'leri için kısmi UPDATE seti kurar.
- * undefined değerler atlanır — sadece gönderilen alanlar güncellenir.
+ * Builds a partial UPDATE set for PATCH endpoints.
+ * undefined values are skipped — only the fields that were sent get updated.
  *
- * @param {Record<string, unknown>} fields — { kolon_adi: değer }
+ * @param {Record<string, unknown>} fields — { column_name: value }
  * @returns {{ sets: string[], params: unknown[] }}
  */
 export function buildUpdate(fields) {
@@ -14,19 +14,19 @@ export function buildUpdate(fields) {
     sets.push(`${column} = $${params.length}`)
   }
 
-  // Hiçbir alan gelmediyse çağıranın `SET ${sets.join(', ')}, updated_at = now()`
-  // kalıbı `SET , updated_at = now()` üretir — sözdizimi hatası, 500. Route
-  // şemaları minProperties: 1 ile koruyor ama AJV bunu additionalProperties'ten
-  // ÖNCE değerlendirir ve app.js removeAdditional: true kullanır: yalnızca
-  // bilinmeyen anahtar içeren bir gövde minProperties'i geçip {} olarak
-  // temizlenebilir. Util kendi başına güvenli olmalı.
+  // If no field arrived, the caller's `SET ${sets.join(', ')}, updated_at = now()`
+  // pattern produces `SET , updated_at = now()` — a syntax error, 500. Route
+  // schemas guard this with minProperties: 1, but AJV evaluates that BEFORE
+  // additionalProperties and app.js uses removeAdditional: true: a body
+  // containing only unknown keys can pass minProperties and then be stripped
+  // to {}. This util must be safe on its own.
   if (!sets.length) {
     throw new EmptyUpdateError()
   }
   return { sets, params }
 }
 
-/** Güncellenecek alan bulunmadığında atılır; route katmanı 400'e çevirir. */
+/** Thrown when there is no field to update; the route layer turns it into a 400. */
 export class EmptyUpdateError extends Error {
   constructor() {
     super('Güncellenecek alan yok')

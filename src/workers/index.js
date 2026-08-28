@@ -1,7 +1,7 @@
 /**
- * Worker yaşam döngüsü. Server process'i içinde çalışır (bu ölçekte ayrı
- * process gereksiz); server.js listen sonrası startWorkers(), kapanışta
- * stopWorkers() çağırır.
+ * Worker lifecycle. Runs inside the server process (a separate process is
+ * unnecessary at this scale); server.js calls startWorkers() after listen and
+ * stopWorkers() on shutdown.
  */
 import { pool } from '../db/pool.js'
 import { createQueueConnection } from '../queues/connection.js'
@@ -12,8 +12,8 @@ import { startMaintenance } from './maintenance.js'
 import { logger } from '../utils/logger.js'
 
 let _workers = []
-let _workerConnection = null // BullMQ worker bağlantısı
-let _serviceRedis = null // loc/eta anahtar okuma-yazması + bakım süpürmesi için
+let _workerConnection = null // BullMQ worker connection
+let _serviceRedis = null // loc/eta key reads+writes + maintenance sweeps
 let _maintenanceTimers = []
 
 export function startWorkers() {
@@ -31,14 +31,14 @@ export function startWorkers() {
   ]
   _maintenanceTimers = startMaintenance({ db: pool, redis: _serviceRedis })
 
-  logger.info('Kuyruk worker\'ları başlatıldı (eta, notifications, maintenance)')
+  logger.info('Queue workers started (eta, notifications, maintenance)')
   return _workers
 }
 
 /**
- * Worker canlılık durumu (F7).
- * /health/deep eskiden iki worker da ölü olsa 200 dönüyordu — kuyruklar
- * sessizce birikirken sağlık kontrolü yeşil kalıyordu.
+ * Worker liveness status (F7).
+ * /health/deep used to return 200 even with both workers dead — the health
+ * check stayed green while queues silently piled up.
  */
 export function getWorkerHealth() {
   if (!_workers.length) return { running: false, workers: [] }

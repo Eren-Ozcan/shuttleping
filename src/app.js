@@ -26,7 +26,7 @@ import { getWorkerHealth } from './workers/index.js'
 import { closeQueues, getQueueDepths } from './queues/index.js'
 
 /**
- * @param {object} opts - Fastify seçeneklerini override etmek için (test'te logger: false)
+ * @param {object} opts - override Fastify options (in tests: logger: false)
  */
 export async function buildApp(opts = {}) {
   const fastify = Fastify({
@@ -34,25 +34,25 @@ export async function buildApp(opts = {}) {
     ajv: {
       customOptions: {
         removeAdditional: true,
-        // Querystring değerleri her zaman string gelir; boolean/number filtreler için şart
+        // Querystring values always arrive as strings; required for boolean/number filters
         coerceTypes: true,
         allErrors: false,
       },
     },
   })
 
-  // Güvenlik başlıkları.
+  // Security headers.
   //
-  // CSP eskiden tamamen kapalıydı (D5): panel ve driver.html oturum
-  // cookie'sini taşıyan origin'den servis edilirken XSS'in birincil savunması
-  // yoktu. Politika bu iki istemcinin gerçek ihtiyacına göre dar tutulur.
+  // CSP used to be fully disabled (D5): the panel and driver.html are served
+  // from the same origin that carries the session cookie, so XSS had no primary
+  // defense. The policy is kept narrow, matching what those two clients actually need.
   await fastify.register(helmet, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        // Leaflet marker/tile'ları data: ve OSM host'undan gelir
+        // Leaflet markers/tiles come from data: and the OSM host
         imgSrc: ["'self'", 'data:', 'https://*.tile.openstreetmap.org'],
-        // Leaflet ve driver.html stilleri element'e inline yazıyor
+        // Leaflet and driver.html write styles inline on elements
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
         connectSrc: ["'self'"],
@@ -61,8 +61,8 @@ export async function buildApp(opts = {}) {
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
-        // Yerel geliştirme http üzerinden çalışır; helmet'in varsayılan
-        // upgrade-insecure-requests direktifi orada isteği https'e çevirip kırar
+        // Local development runs over http; helmet's default
+        // upgrade-insecure-requests directive would rewrite the request to https and break it
         upgradeInsecureRequests: env.isProd ? [] : null,
       },
     },
@@ -70,18 +70,18 @@ export async function buildApp(opts = {}) {
   await fastify.register(cors, { origin: env.CORS_ORIGIN, credentials: true })
   await fastify.register(sensible)
 
-  // Core plugin'ler
+  // Core plugins
   await fastify.register(dbPlugin)
   await fastify.register(redisPlugin)
   await fastify.register(authPlugin)
 
   /**
-   * Rate limit (D1). preHandler'da çalışır: auth hook'ları onRequest'te
-   * koştuğu için bu noktada request.user hazırdır ve limit kullanıcı bazında
-   * sayılabilir — mobil operatör NAT'ı arkasındaki sürücüler birbirinin
-   * kotasını yemez. Kimliksiz istekler IP'ye düşer.
+   * Rate limit (D1). Runs in preHandler: auth hooks run in onRequest, so
+   * request.user is ready at this point and the limit can be counted per
+   * user — drivers behind a mobile carrier NAT do not eat each other's
+   * quota. Unauthenticated requests fall back to IP.
    *
-   * Sayaç Redis'te tutulur; birden fazla instance aynı kotayı paylaşır.
+   * The counter lives in Redis; multiple instances share the same quota.
    */
   await fastify.register(rateLimit, {
     global: true,
@@ -97,7 +97,7 @@ export async function buildApp(opts = {}) {
     }),
   })
 
-  // Route'lar
+  // Routes
   await fastify.register(authRoutes, { prefix: '/api/v1/auth' })
   await fastify.register(companyRoutes, { prefix: '/api/v1/companies' })
   await fastify.register(userRoutes, { prefix: '/api/v1/users' })
@@ -108,10 +108,10 @@ export async function buildApp(opts = {}) {
   await fastify.register(tripRoutes, { prefix: '/api/v1/trips' })
   await fastify.register(historyRoutes, { prefix: '/api/v1/history' })
 
-  // Health check (Railway probe için — hafif, bağımlılıklara dokunmaz)
+  // Health check (for the Railway probe — lightweight, touches no dependencies)
   fastify.get('/health', { logLevel: 'silent' }, async () => ({ status: 'ok' }))
 
-  // Derin health check (monitoring) — DB ve Redis'i gerçekten yoklar
+  // Deep health check (monitoring) — actually probes DB and Redis
   fastify.get('/health/deep', { logLevel: 'silent' }, async (request, reply) => {
     const checks = {}
     try {
@@ -127,16 +127,16 @@ export async function buildApp(opts = {}) {
       checks.redis = 'down'
     }
 
-    // Worker canlılığı (F7): worker'lar ölürse konum ping'leri kabul edilmeye
-    // devam eder ama ETA hesaplanmaz ve bildirim gitmez — sessiz bir arıza
+    // Worker liveness (F7): if the workers die, location pings keep being
+    // accepted but no ETA is computed and no notification is sent — a silent failure
     const workerHealth = getWorkerHealth()
-    // Test/CI'da worker başlatılmaz; yalnızca çalışması beklenen ortamda bak
+    // Workers are not started in test/CI; only check where they are expected to run
     if (workerHealth.workers.length) {
       checks.workers = workerHealth.running ? 'ok' : 'down'
     }
 
-    // Google Maps günlük element kullanımı — bütçe aşıldıysa ETA kaba tahmine
-    // düşmüştür; servis ayakta olduğu için 503 değil, bayrak olarak raporlanır
+    // Google Maps daily element usage — if the budget is exceeded, ETA has
+    // fallen back to a rough estimate; the service is up, so this is reported as a flag, not a 503
     let maps
     if (checks.redis === 'ok' && env.GOOGLE_MAPS_API_KEY) {
       const used = Number((await fastify.redis.get(budgetKey())) ?? 0)
@@ -147,7 +147,7 @@ export async function buildApp(opts = {}) {
       }
     }
 
-    // Kuyruk derinliği: worker'lar ayakta ama iş birikmişse de görünsün
+    // Queue depth: surface it too when workers are up but work is piling up
     let queues
     if (checks.redis === 'ok' && workerHealth.workers.length) {
       queues = await getQueueDepths().catch(() => undefined)
@@ -163,14 +163,14 @@ export async function buildApp(opts = {}) {
     }
   })
 
-  // Statik dosyalar: public/driver.html (sürücü istemcisi) ve
-  // public/admin/ (React panel build çıktısı — `npm run build:admin`)
+  // Static files: public/driver.html (driver client) and
+  // public/admin/ (React panel build output — `npm run build:admin`)
   const publicDir = path.join(process.cwd(), 'public')
   if (existsSync(publicDir)) {
     await fastify.register(fastifyStatic, { root: publicDir })
 
     fastify.setNotFoundHandler((request, reply) => {
-      // SPA fallback: /admin altındaki derin linkler index.html'e düşer
+      // SPA fallback: deep links under /admin fall through to index.html
       const wantsAdmin =
         request.method === 'GET' &&
         request.url.startsWith('/admin') &&
@@ -180,7 +180,7 @@ export async function buildApp(opts = {}) {
     })
   }
 
-  // buildUpdate boş gövdede fırlatır (E10) — 500 yerine 400 dönmeli
+  // buildUpdate throws on an empty body (E10) — should return 400, not 500
   fastify.setErrorHandler((error, request, reply) => {
     if (error instanceof EmptyUpdateError) {
       return reply.badRequest(error.message)
@@ -188,11 +188,11 @@ export async function buildApp(opts = {}) {
     if (error.statusCode && error.statusCode < 500) {
       return reply.send(error)
     }
-    request.log.error({ err: error }, 'İşlenmemiş hata')
+    request.log.error({ err: error }, 'Unhandled error')
     return reply.internalServerError('Beklenmeyen bir hata oluştu')
   })
 
-  // Route handler'ları lazy kuyruk oluşturduysa bağlantıları app ile kapat
+  // If route handlers lazily created queues, close those connections with the app
   fastify.addHook('onClose', () => closeQueues())
 
   return fastify

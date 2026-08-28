@@ -4,10 +4,10 @@ import { env } from '../config/env.js'
 import { logger } from '../utils/logger.js'
 
 async function redisPlugin(fastify) {
-  // maxRetriesPerRequest: null yalnızca BullMQ bağlantısı için doğru — HTTP
-  // yolunda komutları süresiz kuyruklar, Redis düşünce istek hata vermek
-  // yerine asılı kalır ve Fastify soketlerini tüketir. Uygulama client'ı
-  // hızlı hata vermeli.
+  // maxRetriesPerRequest: null is only correct for the BullMQ connection — on
+  // the HTTP path it queues commands forever, so when Redis goes down the
+  // request hangs instead of erroring and exhausts Fastify's sockets. The
+  // application client must fail fast.
   const redis = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: 2,
     connectTimeout: 5_000,
@@ -19,8 +19,8 @@ async function redisPlugin(fastify) {
 
   fastify.decorate('redis', redis)
   fastify.addHook('onClose', async () => {
-    // quit() cevabı gelmeden soket kapanırsa "Connection is closed" ile
-    // reject eder — kapanış sırasında bu zararsızdır, bağlantıyı koparıp geç.
+    // If the socket closes before quit() responds it rejects with
+    // "Connection is closed" — harmless during shutdown, so drop the connection and move on.
     await redis.quit().catch(() => redis.disconnect())
   })
 }

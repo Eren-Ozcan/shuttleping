@@ -6,11 +6,11 @@ import { getCompanyAccess, canNotify } from '../services/billing.service.js'
 import { logger } from '../utils/logger.js'
 
 /**
- * Tek bildirim job'ını işler; testler bu fonksiyonu sahte db ile çağırır.
+ * Handles a single notification job; tests call this function with a fake db.
  *
- * Kalıcı hatalar (eksik chat id / telefon, yapılandırılmamış kanal) retry
- * edilmez — sadece log'a yazılır. Geçici hatalarda (retryable) throw edilir,
- * BullMQ backoff ile yeniden dener.
+ * Permanent failures (missing chat id / phone, unconfigured channel) are not
+ * retried — they are only logged. Transient (retryable) failures are thrown so
+ * BullMQ retries with backoff.
  */
 export async function handleNotificationJob(
   { db, redis, checkAccess = getCompanyAccess },
@@ -23,15 +23,15 @@ export async function handleNotificationJob(
   const passenger = rows[0]
   if (!passenger) return { skipped: 'passenger_not_found' }
 
-  // Job payload'ından gelen company_id'ye güvenme — yolcunun gerçek tenant'ıyla
-  // eşleşmiyorsa bozuk/replay job'dır, loga yanlış tenant yazma
+  // Do not trust the company_id from the job payload — if it does not match
+  // the passenger's real tenant this is a corrupt/replay job, do not log the wrong tenant
   if (passenger.company_id !== data.companyId) {
     return { skipped: 'company_mismatch' }
   }
 
-  // Faturalama kapısı (C1): job kuyruğa girdikten sonra şirket askıya
-  // alınmış olabilir — gönderim anında tekrar bakılır, aksi halde ödemeyen
-  // müşteri için SMS maliyeti ödenmeye devam eder
+  // Billing gate (C1): the company may have been suspended after the job was
+  // enqueued — check again at send time, otherwise SMS cost keeps being paid
+  // for a non-paying customer
   const access = await checkAccess(passenger.company_id, redis)
   if (!canNotify(access)) return { skipped: 'billing_blocked' }
 
@@ -50,14 +50,14 @@ export async function handleNotificationJob(
       data.stopId,
       passenger.notification_channel,
       message,
-      // Prova gönderimleri denetim kaydında canlıdan ayrılmalı
+      // Dry-run sends must be distinguishable from live ones in the audit log
       result.dryRun ? 'dry_run' : result.ok ? 'sent' : 'failed',
       result.ok ? null : result.error,
     ],
   )
 
   if (!result.ok && result.retryable) {
-    throw new Error(`Bildirim gönderilemedi: ${result.error}`)
+    throw new Error(`Notification send failed: ${result.error}`)
   }
   return result
 }
@@ -70,7 +70,7 @@ export function createNotificationWorker({ db, redis, connection }) {
   )
 
   worker.on('failed', (job, err) =>
-    logger.error({ err, jobId: job?.id, data: job?.data }, 'Bildirim job başarısız'),
+    logger.error({ err, jobId: job?.id, data: job?.data }, 'Notification job failed'),
   )
   return worker
 }

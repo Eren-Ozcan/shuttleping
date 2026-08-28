@@ -2,9 +2,9 @@ import { Redis } from 'ioredis'
 import { env } from '../config/env.js'
 
 /**
- * BullMQ için ayrı Redis bağlantısı üretir.
- * Worker'lar bloklayan komutlar kullandığından app client'ı paylaşılmaz;
- * maxRetriesPerRequest: null BullMQ'nun zorunlu kıldığı ayardır.
+ * Creates a dedicated Redis connection for BullMQ.
+ * Workers use blocking commands, so the app client is not shared;
+ * maxRetriesPerRequest: null is the setting BullMQ requires.
  */
 export function createQueueConnection() {
   return new Redis(env.REDIS_URL, {

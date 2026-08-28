@@ -12,7 +12,7 @@ async function authPlugin(fastify) {
   })
 
   /**
-   * Sadece JWT doğrulama. Route'larda onRequest: [fastify.authenticate] ile kullan.
+   * JWT verification only. Use in routes with onRequest: [fastify.authenticate].
    */
   fastify.decorate('authenticate', async (request) => {
     try {
@@ -23,8 +23,8 @@ async function authPlugin(fastify) {
   })
 
   /**
-   * JWT doğrulama + rol kontrolü.
-   * Kullanım: onRequest: [fastify.requireRole(['super_admin', 'company_admin'])]
+   * JWT verification + role check.
+   * Usage: onRequest: [fastify.requireRole(['super_admin', 'company_admin'])]
    */
   fastify.decorate('requireRole', (roles) => {
     return async (request) => {
@@ -40,16 +40,16 @@ async function authPlugin(fastify) {
   })
 
   /**
-   * Kiracı kaynaklarına salt-okunur destek erişimi (E12).
+   * Read-only support access to tenant resources (E12).
    *
-   * super_admin bugüne kadar hiçbir kiracı kaydını okuyamıyordu: şirket ve
-   * yönetici açabiliyor ama tek bir güzergahı, seferi ya da bildirim kaydını
-   * göremiyordu — müşteri sorununu üründen teşhis etmek imkânsızdı.
+   * Until now super_admin could not read any tenant record: it could create a
+   * company and an admin but could not see a single route, trip or
+   * notification log — diagnosing a customer issue from the product was impossible.
    *
-   * super_admin'in JWT'sinde companyId yoktur; hangi kiracıyı incelediğini
-   * `?companyId=` ile belirtir ve bu değer request.user.companyId'ye yazılır,
-   * böylece aşağıdaki tüm sorgular değişmeden çalışır. Yalnızca GET
-   * uçlarında kullanılır — yazma yolları company_admin'e kapalı kalır.
+   * A super_admin JWT has no companyId; it specifies which tenant it is
+   * inspecting via `?companyId=`, and that value is written into
+   * request.user.companyId so every query below works unchanged. Only used on
+   * GET endpoints — write paths stay closed to non company_admin callers.
    */
   fastify.decorate('allowSupportRead', (roles) => {
     const check = fastify.requireRole([...roles, 'super_admin'])

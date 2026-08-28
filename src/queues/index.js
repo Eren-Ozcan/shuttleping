@@ -1,11 +1,11 @@
 /**
- * BullMQ kuyruk tanımları.
+ * BullMQ queue definitions.
  *
- *   eta           — güzergah başına ETA hesaplama job'ları (konum ingest tetikler)
- *   notifications — yolcuya gönderilecek bildirim job'ları (ETA worker tetikler)
+ *   eta           — per-route ETA computation jobs (triggered by location ingest)
+ *   notifications — notification jobs to send to a passenger (triggered by the ETA worker)
  *
- * Kuyruklar lazy oluşturulur; hiç enqueue yapılmayan süreçte (ör. testlerin
- * çoğu) Redis bağlantısı açılmaz.
+ * Queues are created lazily; a process that never enqueues (e.g. most tests)
+ * opens no Redis connection.
  */
 import { Queue } from 'bullmq'
 import { createQueueConnection } from './connection.js'
@@ -32,10 +32,10 @@ export function getNotificationQueue() {
 }
 
 /**
- * Güzergah için ETA hesaplama job'ı ekler.
- * jobId = eta-{routeId} → aynı güzergahın bekleyen job'ı varken gelen
- * konum ping'leri yeni job üretmez (burst dedup). BullMQ custom jobId
- * ':' içeremez.
+ * Adds an ETA computation job for a route.
+ * jobId = eta-{routeId} — while a route has a pending job, incoming location
+ * pings do not create a new one (burst dedup). A BullMQ custom jobId cannot
+ * contain ':'.
  */
 export async function enqueueEtaJob({ companyId, routeId, tripId }) {
   await getEtaQueue().add(
@@ -46,8 +46,8 @@ export async function enqueueEtaJob({ companyId, routeId, tripId }) {
 }
 
 /**
- * Bildirim job'ı ekler. Geçici hatalarda (network, 5xx) 3 deneme,
- * üstel geri çekilme ile.
+ * Adds a notification job. On transient errors (network, 5xx): 3 attempts
+ * with exponential backoff.
  */
 export async function enqueueNotificationJob(data) {
   await getNotificationQueue().add('send', data, {
@@ -59,8 +59,8 @@ export async function enqueueNotificationJob(data) {
 }
 
 /**
- * Kuyruk derinlikleri (F7). Worker'lar ayakta olsa da iş birikiyorsa
- * /health/deep bunu göstermeli.
+ * Queue depths (F7). Even when the workers are up, /health/deep should show
+ * work piling up.
  */
 export async function getQueueDepths() {
   const [eta, notifications] = await Promise.all([

@@ -1,7 +1,8 @@
 /**
- * Periyodik bakım işleri. Ayrı kuyruk gerektirmeyecek kadar hafif;
- * server process'i içinde setInterval ile döner. Çok instance çalışsa bile
- * işlemler idempotent (koşullu UPDATE) — çift çalışması zararsız.
+ * Periodic maintenance jobs. Light enough not to need a separate queue;
+ * they run on setInterval inside the server process. Even with multiple
+ * instances running, the operations are idempotent (conditional UPDATE) — a
+ * double run is harmless.
  */
 import { env } from '../config/env.js'
 import { locationKey, etaKey, etaCalcKey } from '../services/eta/index.js'
@@ -12,13 +13,13 @@ import { logger } from '../utils/logger.js'
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000
 const BILLING_SWEEP_INTERVAL_MS = 60 * 60 * 1000
 const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000
-// Silme parça boyutu — büyük tabloyu tek işlemde kilitlememek için
+// Delete chunk size — so a large table is not locked in a single statement
 const RETENTION_BATCH_SIZE = 5_000
 
 /**
- * Belirtilen süredir ping gelmeyen aktif seferleri 'abandoned' işaretler ve
- * güzergahın canlı Redis anahtarlarını temizler (sürücü "Seferi Bitir"e
- * basmadan çekildiğinde sonsuz konum kaydı / bildirim döngüsünü keser).
+ * Marks active trips with no ping for the configured window as 'abandoned' and
+ * clears the route's live Redis keys (breaks the infinite location-record /
+ * notification loop when a driver leaves without pressing "End Trip").
  */
 export async function sweepAbandonedTrips({ db, redis }) {
   const { rows } = await db.query(
@@ -36,39 +37,39 @@ export async function sweepAbandonedTrips({ db, redis }) {
         etaKey(companyId, routeId),
         etaCalcKey(routeId),
       )
-      .catch((err) => logger.warn({ err, routeId }, 'Abandoned sefer anahtarı silinemedi'))
+      .catch((err) => logger.warn({ err, routeId }, 'Failed to clear abandoned trip key'))
   }
 
   if (rows.length) {
-    logger.info({ count: rows.length }, 'Terkedilmiş seferler kapatıldı')
+    logger.info({ count: rows.length }, 'Abandoned trips closed')
   }
   return rows.length
 }
 
 /**
- * Vadesi geçmiş şirketleri 'overdue' işaretler (C3). next_due_date bugüne
- * kadar yazılıyor ama hiçbir kod yolu okumuyordu — vadesi geçen şirket bir
- * insan butona basana kadar 'active' kalıyordu.
+ * Marks companies past their due date as 'overdue' (C3). next_due_date was
+ * being written but no code path read it — an overdue company stayed 'active'
+ * until a human pressed a button.
  */
 export async function sweepOverdueCompanies({ redis }) {
   const companies = await markOverdueCompanies(redis)
   for (const company of companies) {
     logger.warn(
       { companyId: company.id, name: company.name },
-      'Şirket vadesi geçti — overdue işaretlendi',
+      'Company past due — marked overdue',
     )
   }
   return companies.length
 }
 
 /**
- * Saklama süresi dolmuş kayıtları siler (E7).
+ * Deletes records past their retention window (E7).
  *
- * `location_history` her ping'de bir satır alıyor ve bugüne kadar hiç
- * temizlenmiyordu: 50 sürücüde ~144k satır/gün, yılda ~52M. Konum ve bildirim
- * kayıtları aynı zamanda kişisel veri — süresiz saklamanın KVKK karşılığı yok.
+ * `location_history` gets a row per ping and was never cleaned: ~144k rows/day
+ * for 50 drivers, ~52M/year. Location and notification records are also
+ * personal data — there is no KVKK basis for keeping them forever.
  *
- * Silme, tabloyu uzun süre kilitlememek için parçalar hâlinde yapılır.
+ * Deletion is done in chunks so the table is not locked for long.
  */
 export async function sweepRetention({ db }) {
   const deleted = { locations: 0, notifications: 0 }
@@ -103,19 +104,19 @@ export async function sweepRetention({ db }) {
     env.NOTIFICATION_LOG_RETENTION_DAYS,
   )
 
-  // refresh_tokens de sınırsız büyüyordu: rotasyon artık satırı silmiyor,
-  // iptal ediyor (D9), dolayısıyla temizlik daha da gerekli
+  // refresh_tokens was also growing without bound: rotation no longer deletes
+  // the row, it revokes it (D9), so cleanup is even more necessary
   deleted.refreshTokens = await purgeExpiredRefreshTokens()
 
   if (deleted.locations || deleted.notifications || deleted.refreshTokens) {
-    logger.info(deleted, 'Saklama süresi dolan kayıtlar silindi')
+    logger.info(deleted, 'Records past retention window deleted')
   }
   return deleted
 }
 
 export function startMaintenance({ db, redis }) {
   const run = (name, fn) => () =>
-    fn().catch((err) => logger.error({ err, sweep: name }, 'Bakım süpürmesi başarısız'))
+    fn().catch((err) => logger.error({ err, sweep: name }, 'Maintenance sweep failed'))
 
   const trips = run('trips', () => sweepAbandonedTrips({ db, redis }))
   const billing = run('billing', () => sweepOverdueCompanies({ redis }))
