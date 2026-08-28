@@ -1,10 +1,10 @@
 /**
- * API istemcisi: access token yönetimi + 401'de otomatik refresh.
+ * API client: access token management + automatic refresh on a 401.
  *
- * Access token ve kullanıcı bilgisi YALNIZCA bellekte tutulur (D6) —
- * localStorage'a yazılsaydı enjekte edilen herhangi bir script okuyabilirdi.
- * Sayfa yenilendiğinde oturum, HttpOnly refresh cookie'siyle
- * (path=/api/v1/auth, JS erişemez) `ensureSession()` üzerinden yeniden kurulur.
+ * The access token and user info are held ONLY in memory (D6) — if written to
+ * localStorage any injected script could read them. On a page reload the
+ * session is re-established from the HttpOnly refresh cookie
+ * (path=/api/v1/auth, not reachable from JS) via `ensureSession()`.
  */
 const API = '/api/v1'
 
@@ -43,9 +43,9 @@ async function tryRefresh() {
 }
 
 /**
- * Uygulama açılışında bir kez çağrılır: refresh cookie varsa oturumu kurar.
- * Aynı anda birden fazla çağrı gelirse tek istek paylaşılır.
- * @returns {Promise<object|null>} oturum açık kullanıcı ya da null
+ * Called once at app startup: establishes the session if a refresh cookie exists.
+ * If several calls come in at once, a single request is shared.
+ * @returns {Promise<object|null>} the logged-in user or null
  */
 export function ensureSession() {
   if (accessToken) return Promise.resolve(currentUser)
@@ -104,8 +104,8 @@ export async function logout() {
 }
 
 /**
- * Canlı harita akışı için tek kullanımlık bilet alır (D2).
- * Access token URL'e girmez; bilet 60 sn geçerlidir ve bir kez kullanılır.
+ * Gets a single-use ticket for the live map stream (D2).
+ * The access token never enters the URL; the ticket is valid for 60s and used once.
  */
 export async function getStreamTicket(routeId) {
   const { ticket } = await api(`/locations/${routeId}/stream-ticket`, { method: 'POST' })

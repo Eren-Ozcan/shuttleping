@@ -17,9 +17,9 @@ function RequireAuth({ children }) {
 }
 
 export default function App() {
-  // Access token bellekte tutulduğu için sayfa yenilendiğinde oturum refresh
-  // cookie'siyle yeniden kurulur; o tamamlanmadan yönlendirme yapılmamalı,
-  // aksi halde geçerli oturum login'e atılır.
+  // The access token is held in memory, so on a page reload the session is
+  // re-established from the refresh cookie; no redirect must happen before that
+  // completes, otherwise a valid session gets kicked to login.
   const [ready, setReady] = useState(false)
 
   useEffect(() => {

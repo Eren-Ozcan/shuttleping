@@ -1,10 +1,10 @@
 /**
- * PostgreSQL yedeği alır: backups/shuttleping-YYYYMMDD-HHmmss.dump
- * (pg_dump custom format — pg_restore ile geri yüklenir)
+ * Takes a PostgreSQL backup: backups/shuttleping-YYYYMMDD-HHmmss.dump
+ * (pg_dump custom format — restored with pg_restore)
  *
- * Kullanım: npm run backup
- * pg_dump PATH'te yoksa (Windows'ta yaygın) docker container'ı üzerinden
- * almayı dener.
+ * Usage: npm run backup
+ * If pg_dump is not on PATH (common on Windows) it falls back to running it
+ * through the docker container.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -36,7 +36,7 @@ try {
       stdio: 'inherit',
     })
   } else {
-    // Yerel pg_dump yok — dev ortamındaki docker container'ından al
+    // No local pg_dump — take it from the docker container in the dev environment
     const dbName = new URL(databaseUrl).pathname.slice(1)
     const dump = execFileSync(
       'docker',

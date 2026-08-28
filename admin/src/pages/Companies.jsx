@@ -3,8 +3,8 @@ import { api } from '../api.js'
 
 const EMPTY_ADMIN = { companyId: '', fullName: '', email: '', password: '', phone: '' }
 
-// Kademeli askıya alma: overdue → yönetici girişi ve Google sorgusu kapanır,
-// sürücü ve bildirimler çalışır. suspended → her şey durur.
+// Graduated suspension: overdue -> admin login and Google queries close,
+// driver and notifications keep working. suspended -> everything stops.
 const PAYMENT_LABEL = {
   active: 'Ödeme Güncel',
   overdue: 'Gecikmiş',
@@ -61,7 +61,7 @@ export default function Companies() {
     }
   }
 
-  /** Ödeme alındı: tutar ve not defterle birlikte kaydedilir (C4). */
+  /** Payment received: amount and note are recorded together in the ledger (C4). */
   async function recordPayment(company) {
     const raw = window.prompt(`${company.name} — alınan tutar (TL, boş bırakılabilir)`)
     if (raw === null) return // iptal

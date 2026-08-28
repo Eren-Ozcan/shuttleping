@@ -5,8 +5,8 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 15000,
     hookTimeout: 15000,
-    // Test veritabanına yönlendirme ve dry-run zorlaması; env modülü
-    // yüklenmeden önce çalışmalı
+    // Redirects to the test database and forces dry-run; must run before the
+    // env module is loaded
     setupFiles: ['./test/setup.js'],
     coverage: {
       provider: 'v8',

@@ -22,10 +22,10 @@ export default function LiveMap() {
     api('/routes?active=true').then(setRoutes).catch((err) => setError(err.message))
   }, [])
 
-  // Haritayı bir kez kur
+  // Set up the map once
   useEffect(() => {
     if (mapInstance.current) return
-    const map = L.map(mapRef.current).setView([41.0082, 28.9784], 11) // İstanbul
+    const map = L.map(mapRef.current).setView([41.0082, 28.9784], 11) // Istanbul
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
     }).addTo(map)
@@ -52,7 +52,7 @@ export default function LiveMap() {
     stopLayer.current.clearLayers()
     if (!id) return setStatus('Güzergah seçin')
 
-    // Durakları çiz
+    // Draw the stops
     try {
       const stops = (await api(`/routes/${id}/stops`)).filter((s) => s.isActive)
       const points = stops.map((s) => [s.lat, s.lng])
@@ -74,19 +74,19 @@ export default function LiveMap() {
       return setError(err.message)
     }
 
-    // SSE akışına bağlan
+    // Connect to the SSE stream
     setStatus('Araç konumu bekleniyor…')
     await connectStream(id)
   }
 
   /**
-   * Akışı tek kullanımlık biletle açar. Bilet 60 sn ömürlü olduğu için
-   * EventSource'un kendi yeniden bağlanması işe yaramaz — bağlantı koptuğunda
-   * yeni bilet alıp yeniden abone oluruz. Eskiden akış 15 dk sonra sessizce
-   * ölüyor ve "yeniden deneniyor" yazısında sonsuza kadar kalıyordu (E9).
+   * Opens the stream with a single-use ticket. Because the ticket lives 60s,
+   * EventSource's own reconnect does not work — when the connection drops we
+   * get a new ticket and re-subscribe. The stream used to die silently after
+   * 15 min and stay stuck on "retrying" forever (E9).
    */
   async function connectStream(id, attempt = 0) {
-    if (routeIdRef.current !== id) return // kullanıcı bu arada güzergah değiştirdi
+    if (routeIdRef.current !== id) return // the user changed the route in the meantime
 
     let ticket
     try {

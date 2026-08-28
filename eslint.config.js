@@ -13,15 +13,15 @@ export default [
     },
   },
   {
-    // CLI betikleri: terminale yazmak arayüzün kendisi, Pino burada yanlış araç.
-    // (Kural uygulama kodu için var — orada structured log zorunlu.)
+    // CLI scripts: writing to the terminal is the interface itself, Pino is the
+    // wrong tool here. (The rule exists for application code — structured logs are required there.)
     files: ['scripts/**/*.js'],
     rules: {
       'no-console': 'off',
     },
   },
   {
-    // Tarayıcı istemcileri: sürücü sayfası ve panel kaynağı
+    // Browser clients: the driver page and the panel source
     files: ['public/**/*.js'],
     languageOptions: {
       globals: globals.browser,

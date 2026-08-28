@@ -1,16 +1,16 @@
 /**
- * Bir pg_dump yedeğini geri yükler.
+ * Restores a pg_dump backup.
  *
  *   node scripts/restore.js backups/shuttleping-20260827-120000.dump
- *   node scripts/restore.js <dump> --url postgres://.../hedef_db
+ *   node scripts/restore.js <dump> --url postgres://.../target_db
  *
- * "Denenmemiş yedek yedek değildir" (docs/PILOT-READINESS.md). Yedek alma
- * betiği vardı ama geri yükleme yolu hiç yazılmamış ve hiç denenmemişti.
+ * "An untested backup is not a backup" (docs/PILOT-READINESS.md). The backup
+ * script existed but a restore path was never written and never tested.
  *
- * Güvenlik: hedef veritabanı --url ile açıkça verilmediyse .env'deki
- * DATABASE_URL kullanılır ve üzerine yazmadan önce onay istenir. Üretim
- * veritabanına yanlışlıkla geri yükleme yapmak, yedeğin kendisinden daha
- * büyük bir kayıp olabilir.
+ * Safety: if the target database is not given explicitly with --url, the
+ * DATABASE_URL from .env is used and confirmation is required before
+ * overwriting it. Accidentally restoring over the production database can be a
+ * bigger loss than the backup itself.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -53,8 +53,8 @@ if (!force) {
   }
 }
 
-// --clean --if-exists: mevcut nesneleri düşürüp yeniden kurar, böylece
-// kısmen dolu bir veritabanına da yüklenebilir
+// --clean --if-exists: drops and recreates existing objects, so it can also be
+// loaded into a partially populated database
 const restoreArgs = ['--clean', '--if-exists', '--no-owner', '--no-privileges']
 const hasLocalPgRestore =
   spawnSync('pg_restore', ['--version'], { shell: false }).status === 0
@@ -65,7 +65,7 @@ try {
       stdio: 'inherit',
     })
   } else {
-    // Yerel pg_restore yok — dev ortamındaki docker container'ı üzerinden yükle
+    // No local pg_restore — load it through the docker container in the dev environment
     const container = process.env.PG_CONTAINER ?? 'servistakip-postgres-1'
     execFileSync(
       'docker',
@@ -75,8 +75,8 @@ try {
   }
   console.log(`\nGeri yükleme tamamlandı: ${dumpFile} → ${dbName}`)
 } catch (err) {
-  // pg_restore --clean ilk yüklemede "does not exist" uyarıları verir ve
-  // sıfırdan çıkar; gerçek hatayı ayırt etmek için mesajı göster
+  // pg_restore --clean prints "does not exist" warnings on a first load and
+  // exits non-zero; show the message so a real error can be told apart
   console.error('Geri yükleme hata verdi:', err.message)
   console.error('Not: boş bir veritabanına yüklerken "does not exist" uyarıları normaldir.')
   process.exit(1)

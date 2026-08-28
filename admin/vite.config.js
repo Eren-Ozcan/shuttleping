@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Build çıktısı backend'in public/admin dizinine gider; Fastify static
-// olarak servis eder. Dev'de /api istekleri backend'e proxy'lenir.
+// The build output goes to the backend's public/admin directory; Fastify
+// serves it statically. In dev, /api requests are proxied to the backend.
 export default defineConfig({
   plugins: [react()],
   base: '/admin/',
