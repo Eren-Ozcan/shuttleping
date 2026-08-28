@@ -1,15 +1,15 @@
 /**
- * ShuttlePing sürücü istemcisi.
+ * ShuttlePing driver client.
  *
- * Ayrı dosya, satır içi script değil (D5): panel ve bu sayfa oturum
- * cookie'sini taşıyan origin'den servis ediliyor ve CSP scriptSrc 'self'
- * satır içi script ile onclick niteliklerini bloklar.
+ * A separate file, not an inline script (D5): the panel and this page are
+ * served from the origin that carries the session cookie, and CSP scriptSrc
+ * 'self' blocks inline scripts and onclick attributes.
  */
 const API = '/api/v1'
-const SEND_INTERVAL_MS = 10_000        // en sık 10 sn'de bir gönder
-const REFRESH_INTERVAL_MS = 12 * 60_000 // access token 15 dk; 12 dk'da yenile
-const HEARTBEAT_MS = 30_000            // 30 sn'de bir canlılık kontrolü
-const LOST_AFTER_MS = 90_000          // 90 sn başarısızlık → "bağlantı koptu"
+const SEND_INTERVAL_MS = 10_000        // send at most once every 10s
+const REFRESH_INTERVAL_MS = 12 * 60_000 // access token is 15 min; refresh at 12
+const HEARTBEAT_MS = 30_000            // liveness check every 30s
+const LOST_AFTER_MS = 90_000          // 90s of failure -> "connection lost"
 const BUFFER_KEY = 'sp_driver_buffer'
 const BUFFER_MAX = 200
 
@@ -30,7 +30,7 @@ const setStatus = (text, cls = '') => {
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────
-async function girisYap() {
+async function login() {
   setStatus('Giriş yapılıyor…')
   try {
     const res = await fetch(`${API}/auth/login`, {
@@ -74,7 +74,7 @@ function startRefreshTimer() {
   refreshTimer = setInterval(refreshToken, REFRESH_INTERVAL_MS)
 }
 
-/** authorization header ekler; 401'de bir kez token yenileyip tekrar dener. */
+/** Adds the authorization header; on a 401, refreshes the token once and retries. */
 async function authedFetch(path, opts = {}, retried = false) {
   const res = await fetch(`${API}${path}`, {
     ...opts,
@@ -89,9 +89,9 @@ async function authedFetch(path, opts = {}, retried = false) {
   return res
 }
 
-// ── Sefer yaşam döngüsü ─────────────────────────────────────────────────
-async function seferiDegistir() {
-  if (tripActive) return seferiBitir()
+// ── Trip lifecycle ─────────────────────────────────────────────────────
+async function toggleTrip() {
+  if (tripActive) return endTrip()
 
   if (!navigator.geolocation) {
     return setStatus('Tarayıcınız konum servisini desteklemiyor', 'err')
@@ -106,7 +106,7 @@ async function seferiDegistir() {
     tripActive = true
     $('toggleBtn').textContent = 'Seferi Bitir'
     $('toggleBtn').className = 'btn-stop'
-    watchId = navigator.geolocation.watchPosition(konumYakala, konumHatasi, {
+    watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
       enableHighAccuracy: true,
       maximumAge: 5_000,
     })
@@ -121,7 +121,7 @@ async function seferiDegistir() {
   }
 }
 
-async function seferiBitir() {
+async function endTrip() {
   $('toggleBtn').disabled = true
   if (watchId !== null) navigator.geolocation.clearWatch(watchId)
   watchId = null
@@ -130,7 +130,7 @@ async function seferiBitir() {
   releaseWakeLock()
   try {
     await authedFetch('/trips/end', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })
-  } catch { /* yut — sefer zaten bitiriliyor */ }
+  } catch { /* swallow — the trip is being ended anyway */ }
   $('toggleBtn').textContent = 'Seferi Başlat'
   $('toggleBtn').className = 'btn-start'
   $('lostBadge').classList.add('hidden')
@@ -138,15 +138,15 @@ async function seferiBitir() {
   $('toggleBtn').disabled = false
 }
 
-// ── Konum gönderimi + offline buffer ───────────────────────────────────
+// ── Location send + offline buffer ─────────────────────────────────────
 function readBuffer() {
   try { return JSON.parse(localStorage.getItem(BUFFER_KEY) || '[]') } catch { return [] }
 }
 function writeBuffer(arr) {
-  try { localStorage.setItem(BUFFER_KEY, JSON.stringify(arr.slice(-BUFFER_MAX))) } catch { /* kota dolu */ }
+  try { localStorage.setItem(BUFFER_KEY, JSON.stringify(arr.slice(-BUFFER_MAX))) } catch { /* quota full */ }
 }
 
-async function konumYakala(position) {
+async function onPosition(position) {
   if (!tripActive) return
   const now = Date.now()
   if (now - lastSentAt < SEND_INTERVAL_MS) return
@@ -160,7 +160,7 @@ async function konumYakala(position) {
     speed: speed == null || Number.isNaN(speed) ? undefined : speed,
   }
 
-  const ok = await gonder(fix)
+  const ok = await sendFix(fix)
   if (ok) {
     lastSuccessAt = Date.now()
     $('lostBadge').classList.add('hidden')
@@ -174,8 +174,8 @@ async function konumYakala(position) {
   }
 }
 
-/** @returns {Promise<boolean>} gönderim başarılı mı */
-async function gonder(body) {
+/** @returns {Promise<boolean>} whether the send succeeded */
+async function sendFix(body) {
   try {
     const res = await authedFetch('/locations', {
       method: 'POST',
@@ -183,13 +183,13 @@ async function gonder(body) {
       body: JSON.stringify(body),
     })
     if (res.status === 401) {
-      await seferiBitir()
+      await endTrip()
       setStatus('Oturum süresi doldu — tekrar giriş yapın', 'err')
       return false
     }
     if (res.status === 409) {
-      // Sunucuda aktif sefer yok — istemci durumunu düzelt
-      await seferiBitir()
+      // No active trip on the server — fix the client state
+      await endTrip()
       setStatus('Sunucuda aktif sefer yok — seferi yeniden başlatın', 'err')
       return false
     }
@@ -203,14 +203,14 @@ async function flushBuffer() {
   let buf = readBuffer()
   while (buf.length) {
     const fix = buf[0]
-    const ok = await gonder(fix) // recordedAt taşıdığı için backfill olarak işlenir
+    const ok = await sendFix(fix) // carries recordedAt, so it is processed as a backfill
     if (!ok) break
     buf = buf.slice(1)
     writeBuffer(buf)
   }
 }
 
-function konumHatasi(err) {
+function onPositionError(err) {
   setStatus(
     err.code === 1
       ? 'Konum izni reddedildi — tarayıcı ayarlarından izin verin'
@@ -219,7 +219,7 @@ function konumHatasi(err) {
   )
 }
 
-// ── Heartbeat: uzun süre başarısızlıkta "bağlantı koptu" rozeti ─────────
+// ── Heartbeat: show a "connection lost" badge after a long failure ─────
 function startHeartbeat() {
   clearInterval(heartbeatTimer)
   heartbeatTimer = setInterval(() => {
@@ -231,17 +231,17 @@ function startHeartbeat() {
 }
 function stopHeartbeat() { clearInterval(heartbeatTimer) }
 
-// ── Wake Lock: ekran kilitlenince watchPosition durmasın ───────────────
+// ── Wake Lock: keep watchPosition alive when the screen locks ─────────
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen')
       wakeLock.addEventListener('release', () => { wakeLock = null })
     }
-  } catch { /* desteklenmiyor / izin yok */ }
+  } catch { /* unsupported / no permission */ }
 }
 function releaseWakeLock() {
-  try { wakeLock?.release() } catch { /* yut */ }
+  try { wakeLock?.release() } catch { /* swallow */ }
   wakeLock = null
 }
 document.addEventListener('visibilitychange', () => {
@@ -250,6 +250,6 @@ document.addEventListener('visibilitychange', () => {
   }
 })
 
-// Olay bağlama: onclick nitelikleri CSP tarafından bloklanır
-$('loginBtn').addEventListener('click', girisYap)
-$('toggleBtn').addEventListener('click', seferiDegistir)
+// Event binding: onclick attributes are blocked by CSP
+$('loginBtn').addEventListener('click', login)
+$('toggleBtn').addEventListener('click', toggleTrip)
