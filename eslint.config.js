@@ -16,6 +16,10 @@ export default [
     // CLI scripts: writing to the terminal is the interface itself, Pino is the
     // wrong tool here. (The rule exists for application code — structured logs are required there.)
     files: ['scripts/**/*.js'],
+    languageOptions: {
+      // WebSocket is a Node 22 global; the shared globals list predates it
+      globals: { ...globals.node, WebSocket: 'readonly' },
+    },
     rules: {
       'no-console': 'off',
     },
