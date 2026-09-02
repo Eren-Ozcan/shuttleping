@@ -141,6 +141,84 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.seconds[0]).toBeGreaterThan(0)
   })
 
+  /**
+   * C8 — a route longer than a single request. computeRouteMatrix is asked for
+   * at most 25 destinations at a time, so 26 near stops must go out as two
+   * requests, and the merged result must still line up with the input order.
+   */
+  it('splits a 26-stop route into chunks of 25 and keeps the order', async () => {
+    env.GOOGLE_MAPS_API_KEY = 'test-key'
+
+    // 26 stops in a line east of the origin, all inside the near window
+    const stops = Array.from({ length: 26 }, (_, i) => ({
+      lat: 41.0,
+      lng: 29.0 + (i + 1) * 0.0005,
+    }))
+
+    // The fake answers with a duration derived from the coordinate it was
+    // actually given, so a mixed-up merge cannot pass unnoticed.
+    const durationFor = (lng) => Math.round((lng - 29.0) * 100_000)
+    const chunkSizes = []
+    const fetchSpy = vi.fn(async (_url, options) => {
+      const body = JSON.parse(options.body)
+      chunkSizes.push(body.destinations.length)
+      return {
+        ok: true,
+        json: async () =>
+          body.destinations.map((d, i) => ({
+            originIndex: 0,
+            destinationIndex: i,
+            duration: `${durationFor(d.waypoint.location.latLng.longitude)}s`,
+            condition: 'ROUTE_EXISTS',
+          })),
+      }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const result = await getEtaSeconds(origin, stops, { redis: fakeRedis() })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(chunkSizes).toEqual([25, 1])
+    expect(result.elements).toBe(26)
+    expect(result.source).toBe('google')
+    expect(result.seconds).toEqual(stops.map((s) => durationFor(s.lng)))
+  })
+
+  it('keeps the healthy chunk when only the second chunk fails', async () => {
+    env.GOOGLE_MAPS_API_KEY = 'test-key'
+    const stops = Array.from({ length: 26 }, (_, i) => ({
+      lat: 41.0,
+      lng: 29.0 + (i + 1) * 0.0005,
+    }))
+
+    let call = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, options) => {
+        const body = JSON.parse(options.body)
+        if (++call === 2) return { ok: false, status: 500 }
+        return {
+          ok: true,
+          json: async () =>
+            body.destinations.map((_d, i) => ({
+              originIndex: 0,
+              destinationIndex: i,
+              duration: '111s',
+              condition: 'ROUTE_EXISTS',
+            })),
+        }
+      }),
+    )
+
+    const result = await getEtaSeconds(origin, stops, { redis: fakeRedis() })
+
+    expect(result.seconds.slice(0, 25)).toEqual(new Array(25).fill(111))
+    // The failed chunk's single stop falls back to haversine, it is not null
+    expect(result.seconds[25]).toBeGreaterThan(0)
+    expect(result.seconds[25]).not.toBe(111)
+    expect(result.source).toBe('mixed')
+  })
+
   it('does not call Google once the daily budget is exceeded', async () => {
     env.GOOGLE_MAPS_API_KEY = 'test-key'
     const fetchSpy = vi.fn(async () => respond([240]))

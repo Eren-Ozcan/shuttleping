@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
+import { locationKey } from '../../src/services/eta/index.js'
 
 afterAll(closeTestApp)
 
@@ -46,6 +47,59 @@ describe('GET /api/v1/locations/:routeId', () => {
       headers: await authHeader('driver'),
     })
     expect(res.statusCode).toBe(403)
+  })
+})
+
+/**
+ * B8 — the broadcast stops. The location key carries a 300 s TTL, so once it
+ * expires the panel must report the vehicle as offline instead of showing a
+ * stale position forever.
+ */
+describe('location TTL expiry (B8)', () => {
+  const companyId = '00000000-0000-4000-8000-000000000001'
+  const routeId = '00000000-0000-4000-8000-0000000008b8'
+
+  it('returns 404 once the key is gone, and the stale position is not served', async () => {
+    const app = await getTestApp()
+    const key = locationKey(companyId, routeId)
+
+    // The broadcast is live: written exactly as the ingest route writes it
+    await app.redis.set(
+      key,
+      JSON.stringify({ lat: 40.99, lng: 29.02, ts: Date.now() }),
+      'EX',
+      300,
+    )
+    const live = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}`,
+      headers: await authHeader('company_admin', companyId),
+    })
+    expect(live.statusCode).toBe(200)
+    expect(live.json()).toMatchObject({ lat: 40.99, lng: 29.02 })
+
+    // The TTL runs out (simulated: the key is dropped the way expiry drops it)
+    await app.redis.del(key)
+
+    const offline = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}`,
+      headers: await authHeader('company_admin', companyId),
+    })
+    expect(offline.statusCode).toBe(404)
+    expect(offline.json().message).toMatch(/güncel konum yok/i)
+  })
+
+  it('the key really carries a TTL, it is not written forever', async () => {
+    const app = await getTestApp()
+    const key = locationKey(companyId, routeId)
+    await app.redis.set(key, JSON.stringify({ lat: 40.99, lng: 29.02 }), 'EX', 300)
+
+    const ttl = await app.redis.ttl(key)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(300)
+
+    await app.redis.del(key)
   })
 })
 

@@ -87,6 +87,48 @@ describe('login rate limit (D1)', () => {
   })
 })
 
+/**
+ * A6 — sustained brute force. The limit must not just trip once: every further
+ * attempt in the same window stays blocked, and the block is applied before the
+ * credentials are looked at, so a correct password cannot walk past it either.
+ */
+describe('brute force over the limit (A6)', () => {
+  it('blocks all 20 rapid attempts after the 5th', async () => {
+    const app = await getTestApp()
+    const attempt = (password) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: IP,
+        payload: { email: 'brute20@test.com', password },
+      })
+
+    const codes = []
+    for (let i = 0; i < 20; i++) codes.push((await attempt('wrongpassword')).statusCode)
+
+    expect(codes.slice(0, 5)).toEqual([401, 401, 401, 401, 401])
+    expect(codes.slice(5)).toEqual(new Array(15).fill(429))
+
+    // Still 429 with a well-formed request: the limiter runs before the lookup
+    expect((await attempt('demo12345')).statusCode).toBe(429)
+  })
+
+  it('the block is per key — another address is unaffected', async () => {
+    const app = await getTestApp()
+    const other = '10.0.0.99'
+    await clearRateLimits(other)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      remoteAddress: other,
+      payload: { email: 'brute20@test.com', password: 'wrongpassword' },
+    })
+    expect(res.statusCode).toBe(401)
+    await clearRateLimits(other)
+  })
+})
+
 describe('POST /api/v1/auth/logout', () => {
   // D10: no access token required — a user must be able to revoke their own
   // refresh token even in an expired session. The authority is the cookie itself.
