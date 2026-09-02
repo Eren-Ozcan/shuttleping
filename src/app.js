@@ -89,6 +89,10 @@ export async function buildApp(opts = {}) {
     timeWindow: '1 minute',
     redis: fastify.redis,
     nameSpace: 'rl:',
+    // Fail open: if Redis is unreachable the limiter must not take the API
+    // down with it. Losing the limit for the length of an outage is the
+    // cheaper failure — every request otherwise hangs in this preHandler.
+    skipOnError: true,
     keyGenerator: (request) => request.user?.sub ?? request.ip,
     errorResponseBuilder: () => ({
       statusCode: 429,
