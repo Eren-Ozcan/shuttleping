@@ -8,12 +8,16 @@
  *   node scripts/demo-drive.js --base https://<domain> --speed 6 --stop-at 5
  *
  * Options:
- *   --base <url>      API base, default http://localhost:3000
- *   --speed <n>       time compression: n simulated seconds per real second (default 6)
- *   --kmh <n>         simulated ground speed (default 40)
- *   --stop-at <n>     park at the n-th stop and leave the trip open
- *   --no-end          do not end the trip when the route is finished
- *   --password <p>    demo password (default DEMO_PASSWORD env or demo12345)
+ *   --base <url>          API base, default http://localhost:3000
+ *   --speed <n>           time compression: n simulated seconds per real second (default 6)
+ *   --kmh <n>             simulated ground speed (default 40)
+ *   --stop-at <n>         park at the n-th stop and leave the trip open
+ *   --no-end              do not end the trip when the route is finished
+ *   --password <p>        demo password (default DEMO_PASSWORD env or demo12345)
+ *   --route-index <n>     1-based index into the active routes list (default 1) —
+ *                         pair with `seed-demo.js --routes N` to drive route N;
+ *                         its driver login is driver@demo.local for index 1,
+ *                         driverN@demo.local for index >= 2
  *
  * The send interval is fixed at 10 s because RATE_LIMIT_LOCATION_MAX is 12
  * requests per minute; going faster gets the driver 429'd. Distance covered
@@ -25,7 +29,6 @@ config()
 
 const SEND_INTERVAL_MS = 10_000
 const ADMIN_EMAIL = 'admin@demo.local'
-const DRIVER_EMAIL = 'driver@demo.local'
 const EARTH_RADIUS_M = 6_371_000
 
 const args = process.argv.slice(2)
@@ -40,6 +43,14 @@ const kmh = Number(argValue('--kmh', '40'))
 const stopAt = argValue('--stop-at') ? Number(argValue('--stop-at')) : null
 const endTrip = !args.includes('--no-end')
 const password = argValue('--password', process.env.DEMO_PASSWORD || 'demo12345')
+const routeIndex = Math.max(1, Number(argValue('--route-index', '1')) || 1)
+const DRIVER_EMAIL = routeIndex === 1 ? 'driver@demo.local' : `driver${routeIndex}@demo.local`
+// Must mirror seed-demo.js's routeId(i) exactly — /routes lists newest-first
+// (created_at DESC), so index-into-array is unreliable once --routes > 1.
+const EXPECTED_ROUTE_ID =
+  routeIndex === 1
+    ? '00000000-0000-4000-8000-000000000005'
+    : `00000000-0000-4000-8000-${String(100 + routeIndex).padStart(12, '0')}`
 
 if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(kmh) || kmh <= 0) {
   console.error('--speed ve --kmh pozitif sayı olmalı')
@@ -124,10 +135,14 @@ try {
   // company admin
   const adminToken = await login(ADMIN_EMAIL)
   const routes = await call('/routes?active=true', { token: adminToken })
-  const route = routes[0]
+  const route = routes.find((r) => r.id === EXPECTED_ROUTE_ID)
 
   if (!route) {
-    console.error('Aktif güzergah bulunamadı — önce npm run seed:demo çalıştır')
+    console.error(
+      routes.length
+        ? `--route-index ${routeIndex} yok — önce npm run seed:demo -- --routes ${routeIndex} çalıştır`
+        : 'Aktif güzergah bulunamadı — önce npm run seed:demo çalıştır',
+    )
     process.exit(1)
   }
 
