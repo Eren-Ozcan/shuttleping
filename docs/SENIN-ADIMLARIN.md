@@ -87,15 +87,13 @@ ve çalıştığı doğrulandı — prod'da (Railway) aynı adımları tekrarlam
 yeterli. Lokal test verisi (`test-admin@shuttleping.local` ve bağlı test
 şirketi/kullanıcıları) dev veritabanında duruyor, istersen temizlenir.
 
-Panelden oluşturulamaz (yumurta-tavuk). Şifre hash'ini üret:
+Panelden oluşturulamaz (yumurta-tavuk). Tek komut yeter — `DATABASE_URL`
+hangi veritabanına bakıyorsa orada açar (prod için Railway'in URL'siyle çalıştır):
 ```bash
-node -e "import('bcrypt').then(async b => console.log(await b.default.hash('SIFRENI-BURAYA-YAZ', 10)))"
+npm run create:super-admin -- senin@mailin.com "SIFREN" "Eren Özcan"
 ```
-Sonra veritabanında çalıştır (yerelde: `docker exec -it servistakip-postgres-1 psql -U postgres -d servis_takip`, prod'da Railway'in Postgres konsolu):
-```sql
-INSERT INTO users (company_id, email, password_hash, role, full_name)
-VALUES (NULL, 'senin@mailin.com', '<HASH>', 'super_admin', 'Eren Özcan');
-```
+Aynı e-posta zaten super_admin ise parolayı sıfırlar; başka bir role aitse
+dokunmadan hata verir.
 
 ## 7. İlk şirketi kur (panelden — 2 dk)
 1. `http://localhost:3000/admin/` (veya prod URL) → super_admin ile giriş
@@ -103,6 +101,18 @@ VALUES (NULL, 'senin@mailin.com', '<HASH>', 'super_admin', 'Eren Özcan');
 3. Aynı sayfadan **Şirket Yöneticisi Ekle** ile şirketin admin'ini oluştur
 4. Şirket admin'i girip güzergah/durak/araç/sürücü/yolcu tanımlar
 5. Sürücü telefonunda `https://<domain>/driver.html` açıp giriş yapar → **Yayına Başla**
+
+## 7b. Hızlı test ortamı (panelde tek tek girmeden)
+Sunum provası veya telefon denemesi için hazır bir demo kiracısı tek komutla kurulur:
+```bash
+npm run telegram:chat-id            # bota /start yaz, çıkan ID'yi .env'e TELEGRAM_TEST_CHAT_ID
+npm run seed:demo                   # Demo Servis + 8 duraklı Kadıköy–Ataşehir hattı + 1 yolcu
+npm run demo:drive                  # telefonsuz sanal sürücü (--base ile uzak sunucuya da)
+npm run demo:reset                  # açık seferi kapatır + dedup temizler, tekrar denemek için
+```
+Giriş bilgileri: `admin@demo.local` / `driver@demo.local`, parola `demo12345`
+(`DEMO_PASSWORD` ile değiştirilebilir). Yolcu 6. durakta (Kozyatağı), eşik 10 dk —
+bildirim hattın ortasında düşer. `demo:reset` üretimde `--force` olmadan çalışmaz.
 
 ## 8. Prod yedekleme zamanlaması
 Yerelde `npm run backup` çalışıyor. Prod için önerim: Railway cron

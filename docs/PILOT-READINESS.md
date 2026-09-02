@@ -8,10 +8,22 @@
 > Bu dosyanın **hâlâ geçerli** olan kısmı: test matrisi (A/B/C/D/E/F/H/J/K/M suitleri) ve
 > go/no-go eşikleri. Onlar pilot günü izlenecek.
 >
-> Bu dosyada adı geçip **hâlâ var olmayan** dosyalar: `scripts/seed-demo.js`,
-> `scripts/demo-drive.js`, `scripts/reset-demo.js`, `scripts/drive-phone.js`,
-> `public/debug.html`, `public/track.html`, `test/helpers/fake-notify-server.js`.
-> Bunlar yazılmadı; komut örnekleri çalışmaz.
+> **GÜNCELLEME (2026-09-02).** T0.2/T0.3/T0.4 yazıldı ve yerelde uçtan uca
+> doğrulandı: `npm run seed:demo`, `npm run demo:drive`, `npm run demo:reset`.
+> Ayrıca `npm run create:super-admin` (elle bcrypt + INSERT adımının yerine),
+> `npm run telegram:chat-id` (yolcunun chat ID'sini getUpdates ile bulur) ve
+> `scripts/drive-phone.js` (`npm run demo:phone`) eklendi.
+>
+> `drive-phone.js` Katman 1'i sahte konum uygulaması olmadan çözüyor: USB'deki
+> telefonun Chrome'una DevTools protokolü ile bağlanıp `Emulation.setGeolocationOverride`
+> besliyor, gerçek `driver.html` istemcisini sürüyor. 2026-09-02'de cloudflared
+> tüneli üzerinden uçtan uca doğrulandı (11 ping, ETA 5 dk'da tek `sent` bildirim).
+> Not: `Browser.grantPermissions` Android Chrome'da desteklenmiyor — site konum
+> iznine ilk seferinde telefondan bir kez dokunmak gerekiyor.
+>
+> Bu dosyada adı geçip **hâlâ var olmayan** dosyalar: `public/debug.html`,
+> `public/track.html`, `test/helpers/fake-notify-server.js` (T0.5, T0.6).
+> Bunlara ait komut örnekleri çalışmaz.
 >
 > Var olan ve kullanılabilir olanlar: `npm run backup`, `npm run restore`,
 > `NOTIFICATION_DRY_RUN` / `NOTIFICATION_TEST_CHAT_ID` (dry-run modu, T0.1 karşılığı).
@@ -121,10 +133,10 @@ Sıra bilinçli: önce ölçebilmek (T0), sonra düzeltmek (T1), sonra gösterme
 
 | # | İş | Neden |
 |---|---|---|
-| T0.1 | Kuru çalıştırma modu: `NOTIFICATION_DRY_RUN=true` → gerçek gönderim yok, `notification_logs`'a `dry_run` statüsü. `NOTIFICATION_TEST_CHAT_ID` → tüm mesajlar tek test hesabına | R-2'yi kapatır |
-| T0.2 | `scripts/seed-demo.js` — tek komutla şirket + admin + sürücü + araç + gerçek İstanbul koordinatlı 8 duraklı güzergah + farklı kanal/eşikli 4 yolcu; sabit UUID'ler | Her test aynı yerden başlar |
-| T0.3 | `scripts/demo-drive.js` — güzergah üzerinde sanal servis sürer, gerçek sürücü token'ıyla konum basar. Bayraklar: `--speed`, `--jitter`, `--drop`, `--stop-at` | Telefonsuz, tekrarlanabilir uçtan uca akış |
-| T0.4 | `scripts/reset-demo.js` — dedup, `loc:`/`eta:` anahtarları ve demo bildirim kayıtlarını siler; `NODE_ENV=production`'da çalışmayı reddeder | R-1'i kapatır |
+| T0.1 ✅ | Kuru çalıştırma modu: `NOTIFICATION_DRY_RUN=true` → gerçek gönderim yok, `notification_logs`'a `dry_run` statüsü. `NOTIFICATION_TEST_CHAT_ID` → tüm mesajlar tek test hesabına | R-2'yi kapatır |
+| T0.2 ✅ | `scripts/seed-demo.js` — tek komutla şirket + admin + sürücü + araç + gerçek İstanbul koordinatlı 8 duraklı güzergah + 1 Telegram yolcusu (Kozyatağı, 10 dk eşik); sabit UUID'ler, idempotent. Netgsm açılmadığı için SMS kanallı yolcu seed edilmiyor | Her test aynı yerden başlar |
+| T0.3 ✅ | `scripts/demo-drive.js` — güzergah üzerinde sanal servis sürer, gerçek sürücü token'ıyla konum basar. Bayraklar: `--base`, `--speed`, `--kmh`, `--stop-at`, `--no-end` (`--jitter`/`--drop` yazılmadı) | Telefonsuz, tekrarlanabilir uçtan uca akış |
+| T0.4 ✅ | `scripts/reset-demo.js` — dedup, `loc:`/`eta:` anahtarları ve demo bildirim kayıtlarını siler; `NODE_ENV=production`'da çalışmayı reddeder | R-1'i kapatır |
 | T0.5 | `public/debug.html` test kokpiti (dev-only): son konum + yaşı, durak bazlı ETA, aktif dedup anahtarları, kuyruk derinlikleri, son 20 bildirim ve gitmediyse nedeni | "Neden bildirim gelmedi?" sorusunu log kazmadan cevaplar |
 | T0.6 | `test/helpers/fake-notify-server.js` — sahte Telegram/Netgsm; 200/403/429/timeout üretir, gönderilen metni yakalar | D ve H serisi testleri otomatikleştirir |
 

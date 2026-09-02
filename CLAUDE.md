@@ -22,6 +22,13 @@ npm run dev                          # Dev server (--watch ile auto-restart)
 
 cd admin && npm install && npm run dev  # Admin panel dev (5173, /api proxy'li)
 npm run build:admin                  # Paneli public/admin'e derle (Fastify servis eder)
+npm run create:super-admin -- <email> <parola> "<Ad>"  # ilk super_admin (prod'da da)
+npm run telegram:chat-id             # bota /start yazanların chat ID'lerini listeler
+npm run seed:demo                    # demo kiracı: şirket+admin+sürücü+8 durak+1 yolcu (idempotent)
+npm run demo:drive                   # telefonsuz sanal sürücü (--base --speed --kmh --stop-at)
+npm run demo:phone -- --base <url>   # USB'deki Android'de gerçek driver.html'i sür (DevTools konum override)
+npm run demo:reset                   # açık seferi kapat + dedup/Redis temizle (prod'da --force ister)
+
 npm run backup                       # pg_dump yedeği (backups/, docker fallback'li)
 npm run restore -- <dump> [--url X]  # Yedeği geri yükle (onay ister; --force ile atlanır)
 ```
