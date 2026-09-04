@@ -45,6 +45,15 @@
 >
 > Var olan ve kullanılabilir olanlar: `npm run backup`, `npm run restore`,
 > `NOTIFICATION_DRY_RUN` / `NOTIFICATION_TEST_CHAT_ID` (dry-run modu, T0.1 karşılığı).
+>
+> **GÜNCELLEME (2026-09-04).** Bölüm 4'teki matristen eksik olan tüm OTO
+> satırları yazıldı: A2, A4, A8, B3, B4, B5, B9, C4, C5, C7, E4, F6, H4, H6, H7,
+> K3, M1 — artık hepsi ✅. A2 gerçek 10 dakikayı değil, aynı expire→refresh→devam
+> döngüsünü 1sn'lik prob token'larla sıkıştırıyor (mekanizma kanıtlanıyor, saat
+> değil). H4 ve M1 gerçek BullMQ Worker + fake-notify-server ile uçtan uca
+> çalışıyor. F6'nın beklenen kodu 404'ten 409'a düzeltildi (satıra bak — sebep
+> orada). Kalın (zorunlu) satırlardan hiçbiri eksik değil. EL/SAHA satırları
+> (J serisi, K1/K2/K4, M2/M3, çoğu B/C/E/H) hâlâ elle/telefonla yapılacak.
 
 Bir şirkete sunum yapmak ve bir haftalık deneme (pilot) koşmak için gereken
 hazırlık. Bulguların tamamı `1e9b07f` üzerinde kod okunarak doğrulandı.
@@ -270,13 +279,13 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | # | Senaryo | Beklenen | Nasıl |
 |---|---|---|---|
 | A1 | Sürücü olmayan hesapla `driver.html` girişi | "Bu sayfa sadece sürücüler içindir", yayın açılmaz | EL |
-| **A2** | `JWT_ACCESS_EXPIRES=30s` ile 10 dakika kesintisiz yayın | Tek konum kaybı olmadan devam | OTO |
+| **A2** ✅ | `JWT_ACCESS_EXPIRES=30s` ile 10 dakika kesintisiz yayın | Tek konum kaybı olmadan devam | OTO |
 | A3 | Aynı refresh cookie ile ikinci kez yenileme | 401 — rotasyon eskisini geçersiz kılmış | OTO |
-| A4 | Çıkış sonrası yenileme denemesi | 401 | OTO |
+| A4 ✅ | Çıkış sonrası yenileme denemesi | 401 | OTO |
 | A5 | Ödemesi gecikmiş şirketin sürücüsü giriş yapar | 402; `super_admin` etkilenmez | OTO |
 | A6 | Yanlış şifreyle 20 hızlı deneme | 5. denemeden sonra 429 (T1.4 sonrası) | OTO |
 | A7 | Sürücü token'ıyla `GET /passengers` | 403 | OTO |
-| A8 | Kurcalanmış imzalı token | 401, gövde sızıntısı yok | OTO |
+| A8 ✅ | Kurcalanmış imzalı token | 401, gövde sızıntısı yok | OTO |
 
 ### B — Konum gönderimi
 
@@ -284,13 +293,13 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 |---|---|---|---|
 | B1 | Güzergaha atanmamış sürücü yayına başlar | 404, ekranda görünür | EL |
 | B2 | Yayın sürerken güzergah `is_active=false` | Sonraki gönderim 404, sürücü bilgilendirilir | EL |
-| B3 | Sürücü iki aktif güzergaha atanmış | Deterministik seçim (T1.4 sonrası) | OTO |
-| B4 | `lat=91`, `lng=181`, metin değerler | 400 şema hatası | OTO |
-| B5 | `heading`/`speed` yok | Kabul, veritabanına `null` | OTO |
+| B3 ✅ | Sürücü iki aktif güzergaha atanmış | Deterministik seçim (T1.4 sonrası) | OTO |
+| B4 ✅ | `lat=91`, `lng=181`, metin değerler | 400 şema hatası | OTO |
+| B5 ✅ | `heading`/`speed` yok | Kabul, veritabanına `null` | OTO |
 | B6 | 10 sn'lik kısma | Ağ panelinde 10 sn'den sık istek yok | EL |
 | B7 | Uçak modu 2 dakika, sonra geri | Ekranda hata; şebeke gelince kendiliğinden devam | SAHA |
 | B8 | Yayın durdurulur, 5 dakika beklenir | Redis TTL dolar, 404, panelde çevrimdışı | OTO |
-| B9 | 1 saatlik yayın | `location_history`'de ≈360 satır | OTO |
+| B9 ✅ | 1 saatlik yayın | `location_history`'de ≈360 satır | OTO |
 | B10 | Aynı noktada 10 dakika duran araç | ETA sabit, tekrar bildirim yok, kuyruk şişmiyor | OTO |
 
 ### C — ETA motoru
@@ -300,10 +309,10 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | **C1** | 1 saatlik yayında Distance Matrix çağrı sayımı | ≤ 80 çağrı/saat/güzergah (T1.1 sonrası) | OTO |
 | C2 | Anahtar tanımlı, gerçek trafik | Süre trafiği yansıtır | EL |
 | C3 | `GOOGLE_MAPS_API_KEY` silinir | Haversine yedeği, çökme yok | OTO |
-| C4 | Google 429 / `OVER_QUERY_LIMIT` | Uyarı loglanır, yedeğe düşer, bildirim yine gider | OTO |
-| C5 | Google 10 sn'den uzun sürer | `AbortSignal.timeout` devreye girer | OTO |
+| C4 ✅ | Google 429 / `OVER_QUERY_LIMIT` | Uyarı loglanır, yedeğe düşer, bildirim yine gider | OTO |
+| C5 ✅ | Google 10 sn'den uzun sürer | `AbortSignal.timeout` devreye girer | OTO |
 | C6 | Durağı geçtikten sonra | ETA artar, bildirim tekrarlanmaz | OTO |
-| C7 | Durağı olmayan güzergah | `skipped: no_stops` | OTO |
+| C7 ✅ | Durağı olmayan güzergah | `skipped: no_stops` | OTO |
 | C8 | 26 duraklı güzergah | Parçalı istek doğru birleşir, sıra korunur | OTO |
 
 ### D — Bildirim
@@ -330,7 +339,7 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | E1 | Panel açık, sürücü yayında | Araç 3 sn'de bir ilerler, ETA güncellenir | EL |
 | E2 | Sunucu yeniden başlar | Akış `retry: 5000` ile kendi kendine bağlanır | EL |
 | E3 | Sürücü yayını keser | 90 sn içinde "bağlantı koptu" rozeti (T1.3) | EL |
-| E4 | Başka şirketin `routeId`'siyle akış | Veri gelmez | OTO |
+| E4 ✅ | Başka şirketin `routeId`'siyle akış | Veri gelmez | OTO |
 | E5 | `super_admin` canlı haritayı açar | T1.4 sonrası görebilir | EL |
 | E6 | Panel 2 saat açık | Bellek sızıntısı yok, akış canlı | EL |
 
@@ -343,7 +352,7 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | F3 | Gövdede sahte `company_id` | Yok sayılır, JWT'deki kazanır | OTO |
 | F4 | B'nin güzergahının geçmiş konumları | Boş liste | OTO |
 | F5 | Bildirim kayıtları | Yalnız kendi şirketininki | OTO |
-| F6 | Sürücü başka şirketin güzergahına konum basar | 404 | OTO |
+| F6 ✅ | Sürücü başka şirketin güzergahına konum basar | 409 (ingest routeId almıyor, aktif sefer driver_id+company_id ile aranıyor — JWT'deki companyId gerçek seferle eşleşmeyince "aktif sefer yok" hatası; efektif izolasyon aynı, kod 404 değil 409) | OTO |
 
 ### H — Kaos ve dayanıklılık
 
@@ -352,10 +361,10 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | **H1** | Yayın sürerken Redis yeniden başlatılır | Uygulama toparlar. Dikkat: dedup anahtarları uçar — çift bildirim gidiyorsa kalıcı dedup gerekir | EL |
 | H2 | PostgreSQL yeniden başlatılır | Havuz yeniden bağlanır, 500 yağmuru yok | EL |
 | H3 | Kuyrukta iş varken süreç öldürülür | Yeniden başlayınca işlenir, kayıp yok | EL |
-| H4 | Sahte Telegram 5 dakika kapalı | Kuyruk birikir, açılınca gider; ETA'sı geçmiş bildirim gitmemeli | OTO |
+| H4 ✅ | Sahte Telegram 5 dakika kapalı | Kuyruk birikir, açılınca gider; ETA'sı geçmiş bildirim gitmemeli | OTO |
 | H5 | Sürücü yayındayken dağıtım yapılır | Kayıp sinyal ≤ 2, yeniden giriş gerekmez | SAHA |
-| H6 | Telefon saati 10 dakika ileri | Sunucu kendi zamanını kullanır | OTO |
-| H7 | Gece yarısını aşan sefer / yaz saati | `TIMESTAMPTZ` doğru, geçmiş sorguları tutarlı | OTO |
+| H6 ✅ | Telefon saati 10 dakika ileri | Sunucu kendi zamanını kullanır | OTO |
+| H7 ✅ | Gece yarısını aşan sefer / yaz saati | `TIMESTAMPTZ` doğru, geçmiş sorguları tutarlı | OTO |
 | H8 | Disk/kota dolu | Yazma hatası loglanır, sessizce yutulmaz | EL |
 
 ### J — Telefon ve saha
@@ -379,14 +388,14 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 |---|---|---|---|
 | **K1** | Geri yükleme tatbikatı: yedek al, boş veritabanına yükle, panelden doğrula | Veri eksiksiz. Denenmemiş yedek yedek değildir | EL |
 | K2 | Günlük yedeğin zamanlanmış koşusu | Dosya oluşur, boyut makul, başarısızlıkta uyarı | EL |
-| K3 | 1 haftalık `location_history` büyümesi | Aylık tahmin + saklama süresi kararı | OTO |
+| K3 ✅ | 1 haftalık `location_history` büyümesi | Aylık tahmin + saklama süresi kararı | OTO |
 | K4 | "Verilerimi silin" talebi | Yolcu ve izleri için tanımlı adım var | EL |
 
 ### M — Yük ve maliyet
 
 | # | Senaryo | Beklenen | Nasıl |
 |---|---|---|---|
-| M1 | 3 güzergah × 20 yolcu, 1 saat eşzamanlı | Kuyruk sıfıra döner, p95 gecikme < 2 sn | OTO |
+| M1 ✅ | 3 güzergah × 20 yolcu, 1 saat eşzamanlı | Kuyruk sıfıra döner, p95 gecikme < 2 sn | OTO |
 | **M2** | Aynı koşuda Google Cloud faturası okunur | Haftalık öngörü < $20; değilse T1.1 yetersiz | EL |
 | M3 | Railway bellek/CPU | Hobby sınırlarının altında, sızıntı yok | EL |
 
