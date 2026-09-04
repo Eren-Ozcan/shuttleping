@@ -36,6 +36,25 @@ describe('POST /api/v1/locations', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  // B4 — out-of-range and wrong-type values are rejected at the schema level,
+  // before the handler ever looks for an active trip
+  it.each([
+    ['lat out of range', { lat: 91, lng: 29 }],
+    ['lng out of range', { lat: 40, lng: 181 }],
+    // ajv coerces numeric strings ('40.9' -> 40.9); only a non-numeric string fails
+    ['lat is non-numeric text', { lat: 'kuzey', lng: 29.1 }],
+    ['lng is non-numeric text', { lat: 40.9, lng: 'doğu' }],
+  ])('returns 400 for %s', async (_label, payload) => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: await authHeader('driver'),
+      payload,
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('GET /api/v1/locations/:routeId', () => {
