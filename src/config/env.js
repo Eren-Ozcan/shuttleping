@@ -135,6 +135,10 @@ export const env = {
   NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
   NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,
   NETGSM_MSGHEADER: process.env.NETGSM_MSGHEADER ?? null,
+  // Overridable so an integration test can point the adapters at a local fake
+  // server (test/helpers/fake-notify-server.js, T0.6) instead of the real API
+  TELEGRAM_API_BASE: process.env.TELEGRAM_API_BASE ?? 'https://api.telegram.org',
+  NETGSM_API_BASE: process.env.NETGSM_API_BASE ?? 'https://api.netgsm.com.tr',
 
   isProd: process.env.NODE_ENV === 'production',
   isDev: process.env.NODE_ENV !== 'production',

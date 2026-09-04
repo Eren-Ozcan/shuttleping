@@ -18,7 +18,7 @@ export async function send({ passenger, message }) {
   let res
   try {
     res = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      `${env.TELEGRAM_API_BASE}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

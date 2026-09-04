@@ -47,7 +47,7 @@ export async function send({ passenger, message }) {
 
   let res
   try {
-    res = await fetch('https://api.netgsm.com.tr/sms/send/get', {
+    res = await fetch(`${env.NETGSM_API_BASE}/sms/send/get`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: params,
