@@ -125,6 +125,12 @@ export const env = {
   NOTIFICATION_DRY_RUN: process.env.NOTIFICATION_DRY_RUN === 'true',
   NOTIFICATION_TEST_CHAT_ID: process.env.NOTIFICATION_TEST_CHAT_ID ?? null,
 
+  // Public origin the app is reachable at (Railway URL / tunnel / custom domain).
+  // Used to build the tracking link in the notification text; unset -> no link.
+  PUBLIC_URL: process.env.PUBLIC_URL ?? null,
+  // How long a passenger's tracking link stays valid after the notification fires
+  TRACK_TOKEN_TTL_SECONDS: Number(process.env.TRACK_TOKEN_TTL_SECONDS ?? 4 * 3600),
+
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
   NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
   NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,

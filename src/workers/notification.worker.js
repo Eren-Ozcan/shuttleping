@@ -1,8 +1,11 @@
+import { randomBytes } from 'node:crypto'
 import { Worker } from 'bullmq'
 import { NOTIFICATION_QUEUE } from '../queues/index.js'
 import { notify } from '../services/notifications/index.js'
 import { buildApproachMessage } from '../services/notifications/message.js'
 import { getCompanyAccess, canNotify } from '../services/billing.service.js'
+import { trackTokenKey } from '../services/tracking.service.js'
+import { env } from '../config/env.js'
 import { logger } from '../utils/logger.js'
 
 /**
@@ -35,7 +38,30 @@ export async function handleNotificationJob(
   const access = await checkAccess(passenger.company_id, redis)
   if (!canNotify(access)) return { skipped: 'billing_blocked' }
 
-  const message = buildApproachMessage(data)
+  const { rows: companyRows } = await db.query('SELECT name FROM companies WHERE id = $1', [
+    passenger.company_id,
+  ])
+  const companyName = companyRows[0]?.name ?? null
+
+  let trackUrl = null
+  if (env.PUBLIC_URL) {
+    const token = randomBytes(24).toString('hex')
+    await redis.set(
+      trackTokenKey(token),
+      JSON.stringify({
+        companyId: passenger.company_id,
+        routeId: data.routeId,
+        stopId: data.stopId,
+        stopName: data.stopName,
+        companyName,
+      }),
+      'EX',
+      env.TRACK_TOKEN_TTL_SECONDS,
+    )
+    trackUrl = `${env.PUBLIC_URL}/track.html?t=${token}`
+  }
+
+  const message = buildApproachMessage({ ...data, companyName, trackUrl })
   const result = await notify(passenger, message, { dryRun: access.dryRun })
 
   await db.query(
