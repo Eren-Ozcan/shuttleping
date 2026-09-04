@@ -21,9 +21,27 @@
 > Not: `Browser.grantPermissions` Android Chrome'da desteklenmiyor — site konum
 > iznine ilk seferinde telefondan bir kez dokunmak gerekiyor.
 >
-> Bu dosyada adı geçip **hâlâ var olmayan** dosyalar: `public/debug.html`,
-> `public/track.html`, `test/helpers/fake-notify-server.js` (T0.5, T0.6).
-> Bunlara ait komut örnekleri çalışmaz.
+> **GÜNCELLEME (2026-09-03).** T1.4'ün super_admin canlı akış kısmı ve T1.5
+> tamamlandı: `locations/index.js`'te getLocation/streamTicket/getEta artık
+> `allowSupportRead` ile super_admin'e `?companyId=` üzerinden açık; bildirim
+> metnine şirket adı eklendi; `public/track.html` + `public/track.js` +
+> `GET /api/v1/track/:token` (public, opak Redis token, tek durağa özel,
+> `PUBLIC_URL` ayarlıysa mesaja eklenir) eklendi.
+>
+> **GÜNCELLEME (2026-09-03, devam).** T0.5 de tamam: `public/debug.html` +
+> `public/debug.js` — company_admin girişiyle konum/yaş, durak bazlı ETA
+> (dedup durumunun proxy'si), `/health/deep` üzerinden kuyruk derinliği ve son
+> 20 bildirimi 5 sn'de bir gösterir. Yeni bir backend endpoint'i eklemedi,
+> var olan admin API'lerini kullanır.
+>
+> **GÜNCELLEME (2026-09-03, devam).** T0.6 de tamam: `test/helpers/fake-notify-server.js`
+> — gerçek bir HTTP sunucusu (adapter'lar `TELEGRAM_API_BASE`/`NETGSM_API_BASE`
+> ile buna yönlendirilir), `test/services/notifications-live.test.js` gerçek
+> soket üzerinden 403/429/netgsm 30/85 senaryolarını doğruluyor. `vi.stubGlobal`
+> ile fetch'i taklit eden `notifications.test.js`'e ek — retry/backoff'u gerçek
+> HTTP round trip'te de kanıtlıyor.
+>
+> Artık bu dosyada adı geçip var olmayan dosya kalmadı; T0 ve T1 tamamı kapandı.
 >
 > Var olan ve kullanılabilir olanlar: `npm run backup`, `npm run restore`,
 > `NOTIFICATION_DRY_RUN` / `NOTIFICATION_TEST_CHAT_ID` (dry-run modu, T0.1 karşılığı).
@@ -137,8 +155,8 @@ Sıra bilinçli: önce ölçebilmek (T0), sonra düzeltmek (T1), sonra gösterme
 | T0.2 ✅ | `scripts/seed-demo.js` — tek komutla şirket + admin + sürücü + araç + gerçek İstanbul koordinatlı 8 duraklı güzergah + 1 Telegram yolcusu (Kozyatağı, 10 dk eşik); sabit UUID'ler, idempotent. Netgsm açılmadığı için SMS kanallı yolcu seed edilmiyor | Her test aynı yerden başlar |
 | T0.3 ✅ | `scripts/demo-drive.js` — güzergah üzerinde sanal servis sürer, gerçek sürücü token'ıyla konum basar. Bayraklar: `--base`, `--speed`, `--kmh`, `--stop-at`, `--no-end` (`--jitter`/`--drop` yazılmadı) | Telefonsuz, tekrarlanabilir uçtan uca akış |
 | T0.4 ✅ | `scripts/reset-demo.js` — dedup, `loc:`/`eta:` anahtarları ve demo bildirim kayıtlarını siler; `NODE_ENV=production`'da çalışmayı reddeder | R-1'i kapatır |
-| T0.5 | `public/debug.html` test kokpiti (dev-only): son konum + yaşı, durak bazlı ETA, aktif dedup anahtarları, kuyruk derinlikleri, son 20 bildirim ve gitmediyse nedeni | "Neden bildirim gelmedi?" sorusunu log kazmadan cevaplar |
-| T0.6 | `test/helpers/fake-notify-server.js` — sahte Telegram/Netgsm; 200/403/429/timeout üretir, gönderilen metni yakalar | D ve H serisi testleri otomatikleştirir |
+| T0.5 ✅ | `public/debug.html` test kokpiti (dev-only): son konum + yaşı, durak bazlı ETA/dedup durumu, kuyruk derinlikleri, son 20 bildirim ve gitmediyse nedeni | "Neden bildirim gelmedi?" sorusunu log kazmadan cevaplar |
+| T0.6 ✅ | `test/helpers/fake-notify-server.js` — sahte Telegram/Netgsm; 200/403/429 ve Netgsm hata kodları üretir, gönderilen metni yakalar (timeout senaryosu desteklenir ama otomatik testte 10 sn'lik `AbortSignal` yüzünden koşulmuyor) | D ve H serisi testleri otomatikleştirir |
 
 ### T1 — Engel kapatma (≈ 1,5 gün)
 
@@ -147,8 +165,8 @@ Sıra bilinçli: önce ölçebilmek (T0), sonra düzeltmek (T1), sonra gösterme
 | T1.1 | ETA kısma (güzergah başına en fazla 45 sn'de bir) + geçilen durak eleme + 10 km üstü duraklar için haversine | K-1 |
 | T1.2 | Sürücü oturumu kendini yeniler: 12 dakikada bir sessiz refresh, 401'de tek seferlik yeniden deneme, 3 başarısızlıkta net uyarı | K-2 |
 | T1.3 | Wake Lock + 30 sn'lik kalp atışı + panelde 90 sn sessizlikte "bağlantı koptu" rozeti | K-3 |
-| T1.4 | `@fastify/rate-limit` (login: IP başına 5/dk) + güzergah seçiminde `ORDER BY created_at` + `super_admin`'e canlı akış izni | R-3, R-5 |
-| T1.5 | Mesaj metnine şirket adı ve kısa takip linki + `public/track.html` (imzalı, salt-okunur, süreli link) | R-5 |
+| T1.4 ✅ | `@fastify/rate-limit` (login: IP başına 5/dk) + güzergah seçiminde `ORDER BY created_at` + `super_admin`'e canlı akış izni | R-3, R-5 |
+| T1.5 ✅ | Mesaj metnine şirket adı ve kısa takip linki + `public/track.html` (opak, süreli, tek durağa özel link) | R-5 |
 
 ### T2 — Ortam ve saha (≈ 1 gün + hesap adımları)
 
