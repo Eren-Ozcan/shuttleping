@@ -141,6 +141,46 @@ describe('getEtaSeconds (Routes API)', () => {
     expect(result.seconds[0]).toBeGreaterThan(0)
   })
 
+  // C4 — Google 429 / OVER_QUERY_LIMIT is the same "this chunk falls back"
+  // path as any other HTTP failure; the notification must still go out on
+  // the haversine estimate, not get lost
+  it('falls back to haversine on a 429 (rate limited / OVER_QUERY_LIMIT), does not throw', async () => {
+    env.GOOGLE_MAPS_API_KEY = 'test-key'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 429,
+        json: async () => ({ error: { status: 'RESOURCE_EXHAUSTED' } }),
+      })),
+    )
+
+    const result = await getEtaSeconds(origin, [near], { redis: fakeRedis() })
+
+    expect(result.source).toBe('haversine')
+    expect(result.elements).toBe(0)
+    expect(result.seconds[0]).toBeGreaterThan(0)
+  })
+
+  // C5 — a request that never resolves (mirrors what the 10s AbortSignal
+  // timeout in distance.js turns into: an AbortError thrown by fetch) must be
+  // caught by the same per-chunk try/catch, not hang the ETA computation
+  it('falls back to haversine when the request aborts/times out, does not throw', async () => {
+    env.GOOGLE_MAPS_API_KEY = 'test-key'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('The operation was aborted', 'AbortError')
+      }),
+    )
+
+    const result = await getEtaSeconds(origin, [near], { redis: fakeRedis() })
+
+    expect(result.source).toBe('haversine')
+    expect(result.elements).toBe(0)
+    expect(result.seconds[0]).toBeGreaterThan(0)
+  })
+
   /**
    * C8 — a route longer than a single request. computeRouteMatrix is asked for
    * at most 25 destinations at a time, so 26 near stops must go out as two
