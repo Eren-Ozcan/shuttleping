@@ -48,6 +48,34 @@ describe('GET /api/v1/locations/:routeId', () => {
     })
     expect(res.statusCode).toBe(403)
   })
+
+  // E12 — support read: super_admin has no companyId of its own, must pass ?companyId=
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('lets super_admin read the tenant with ?companyId=', async () => {
+    const app = await getTestApp()
+    const companyId = '00000000-0000-4000-8000-000000000001'
+    const routeId = '00000000-0000-4000-8000-0000000e1200'
+    const key = locationKey(companyId, routeId)
+    await app.redis.set(key, JSON.stringify({ lat: 40.9, lng: 29.1 }), 'EX', 300)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}?companyId=${companyId}`,
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(200)
+
+    await app.redis.del(key)
+  })
 })
 
 /**
@@ -123,6 +151,16 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
     })
     expect(res.statusCode).toBe(404)
   })
+
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/eta',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('GET /api/v1/locations/:routeId/stream (SSE)', () => {
@@ -185,5 +223,15 @@ describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
       headers: await authHeader('company_admin'),
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream-ticket',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
   })
 })

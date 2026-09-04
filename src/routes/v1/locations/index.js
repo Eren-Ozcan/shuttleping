@@ -118,7 +118,7 @@ export default async function locationRoutes(fastify) {
    */
   fastify.get(
     '/:routeId',
-    { schema: getLocationSchema, onRequest: [fastify.requireRole(['company_admin'])] },
+    { schema: getLocationSchema, onRequest: [fastify.allowSupportRead(['company_admin'])] },
     async (request, reply) => {
       const raw = await fastify.redis.get(
         locationKey(request.user.companyId, request.params.routeId),
@@ -136,7 +136,9 @@ export default async function locationRoutes(fastify) {
    */
   fastify.post(
     '/:routeId/stream-ticket',
-    { schema: streamTicketSchema, onRequest: [fastify.requireRole(['company_admin'])] },
+    // POST but read-only in effect (issues an opaque ticket, writes no tenant
+    // record) — support access is allowed the same as the GET endpoints below
+    { schema: streamTicketSchema, onRequest: [fastify.allowSupportRead(['company_admin'])] },
     async (request, reply) => {
       const { routeId } = request.params
       const companyId = request.user.companyId
@@ -244,7 +246,7 @@ export default async function locationRoutes(fastify) {
    */
   fastify.get(
     '/:routeId/eta',
-    { schema: getEtaSchema, onRequest: [fastify.requireRole(['company_admin'])] },
+    { schema: getEtaSchema, onRequest: [fastify.allowSupportRead(['company_admin'])] },
     async (request, reply) => {
       const raw = await fastify.redis.get(
         etaKey(request.user.companyId, request.params.routeId),
