@@ -319,6 +319,52 @@ describe('refresh token family (D9)', () => {
     // attacker keeps refreshing while the user notices nothing
     expect((await refresh(second)).statusCode).toBe(401)
   })
+
+  // A4 — logout revokes the refresh cookie server-side; a refresh attempt
+  // after logout must fail even though the client still holds the old cookie
+  it('a refresh attempt after logout returns 401 (A4)', async () => {
+    const cookie = await loginCookie(ids.driverEmail)
+
+    const logoutRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      remoteAddress: IP,
+      cookies: { refreshToken: cookie },
+    })
+    expect(logoutRes.statusCode).toBe(200)
+
+    expect((await refresh(cookie)).statusCode).toBe(401)
+  })
+})
+
+// A8 — a signature-tampered access token must be rejected outright, and the
+// error response must not leak the token's decoded payload
+describe('tampered access token (A8)', () => {
+  it('returns 401 for a token with a flipped signature, no payload leak', async () => {
+    const valid = app.jwt.sign({ sub: ids.driverId, role: 'driver', companyId: ids.companyId })
+    const [header, payload, signature] = valid.split('.')
+    const tamperedSig = signature.slice(0, -1) + (signature.at(-1) === 'A' ? 'B' : 'A')
+    const tampered = `${header}.${payload}.${tamperedSig}`
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: { authorization: `Bearer ${tampered}` },
+      payload: { lat: 41.0, lng: 29.0 },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.body).not.toContain(ids.driverId)
+  })
+
+  it('returns 401 for a structurally invalid token', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: { authorization: 'Bearer not-a-jwt-at-all' },
+      payload: { lat: 41.0, lng: 29.0 },
+    })
+    expect(res.statusCode).toBe(401)
+  })
 })
 
 describe('payment ledger (C4)', () => {
