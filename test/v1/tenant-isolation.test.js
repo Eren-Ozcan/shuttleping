@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { getTestApp, closeTestApp } from '../helpers/app.js'
+import { locationKey } from '../../src/services/eta/index.js'
 
 let app
 const A = { label: 'A' }
@@ -181,6 +182,30 @@ describe('a single read does not return another tenant\'s record', () => {
     const res = await asA('POST', `/api/v1/locations/${B.routeId}/stream-ticket`)
     expect(res.statusCode).toBe(404)
   })
+
+  // E4 — a ticket is minted for one specific (companyId, routeId) pair; opening
+  // the stream at another tenant's routeId with it must be rejected before any
+  // payload is pushed, even though B's route and live location both exist for real
+  it('GET /locations/:routeId/stream with a ticket for the wrong route → 403, no data', async () => {
+    await app.redis.set(
+      locationKey(B.companyId, B.routeId),
+      JSON.stringify({ lat: 41.0, lng: 29.0, ts: Date.now() }),
+      'EX',
+      60,
+    )
+
+    const ticketRes = await asA('POST', `/api/v1/locations/${A.routeId}/stream-ticket`)
+    expect(ticketRes.statusCode).toBe(200)
+    const { ticket } = ticketRes.json()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${B.routeId}/stream?ticket=${ticket}`,
+    })
+    expect(res.statusCode).toBe(403)
+
+    await app.redis.del(locationKey(B.companyId, B.routeId))
+  })
 })
 
 describe('write endpoints cannot touch another tenant\'s record', () => {
@@ -211,6 +236,35 @@ describe('write endpoints cannot touch another tenant\'s record', () => {
       (await asA('PATCH', `/api/v1/passengers/${B.passengerId}`, { fullName: 'Ele Geçirildi' }))
         .statusCode,
     ).toBe(404)
+  })
+
+  // F6 — the ingest route takes no routeId; the active trip is looked up by
+  // (driver_id, company_id) from the JWT. A's driver signed with B's
+  // companyId cannot find A's real trip (its company_id is A) nor any trip
+  // of B's (driver_id doesn't match) — the mismatch surfaces as the same
+  // "no active trip" conflict a driver with no shift open would get, proving
+  // no location is ever written to the wrong tenant.
+  it('POST /locations with a driver token carrying the wrong companyId finds no trip (409)', async () => {
+    const crossToken = {
+      authorization: `Bearer ${app.jwt.sign({
+        sub: A.driverId,
+        role: 'driver',
+        companyId: B.companyId,
+      })}`,
+    }
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: crossToken,
+      payload: { lat: 41.0, lng: 29.0 },
+    })
+    expect(res.statusCode).toBe(409)
+
+    const { rows } = await app.db.query(
+      'SELECT count(*)::int AS n FROM location_history WHERE company_id = $1 AND driver_id = $2 AND lat = 41.0 AND lng = 29.0',
+      [B.companyId, A.driverId],
+    )
+    expect(rows[0].n).toBe(0)
   })
 
   it('POST /routes/:id/stops cannot add a stop to another tenant\'s route', async () => {
