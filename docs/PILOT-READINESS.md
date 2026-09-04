@@ -54,6 +54,19 @@
 > çalışıyor. F6'nın beklenen kodu 404'ten 409'a düzeltildi (satıra bak — sebep
 > orada). Kalın (zorunlu) satırlardan hiçbiri eksik değil. EL/SAHA satırları
 > (J serisi, K1/K2/K4, M2/M3, çoğu B/C/E/H) hâlâ elle/telefonla yapılacak.
+>
+> **GÜNCELLEME (2026-09-04, devam) — J1 gerçek cihazda test edildi, FAIL.**
+> Emülatör (adb) + gerçek telefon (USB, `adb reverse` ile HTTPS'siz localhost
+> erişimi) üzerinde paralel iki sefer açılıp ekranları kilitlendi,
+> `location_history` izlendi. Sonuç: **ekran kilitliyken ping tamamen duruyor**
+> — `T1.3`'ün Wake Lock'u (`public/driver.js:238`) donanım güç tuşuyla
+> kilitlemeyi engelleyemiyor; tarayıcı sekmeyi arka plana alıp wake lock'u
+> kendisi serbest bırakıyor, `watchPosition` askıya alınıyor. Toparlanma
+> güvenilir: unlock + Chrome foreground olunca saniyeler içinde otomatik devam
+> ediyor, veri kaybı/tekrar giriş yok — panelin 90 sn'lik "bağlantı koptu"
+> rozeti de doğru çalışıyor. Web API'leriyle kalıcı bir çözümü yok; T1.3 ve J1
+> satırları ve "Geçiş kriterleri" tablosundaki "Ekran kilidi" satırı buna göre
+> işaretlendi. Operasyonel çözüm sürücü brifingi: ekranı kilitlemeyin.
 
 Bir şirkete sunum yapmak ve bir haftalık deneme (pilot) koşmak için gereken
 hazırlık. Bulguların tamamı `1e9b07f` üzerinde kod okunarak doğrulandı.
@@ -173,7 +186,7 @@ Sıra bilinçli: önce ölçebilmek (T0), sonra düzeltmek (T1), sonra gösterme
 |---|---|---|
 | T1.1 | ETA kısma (güzergah başına en fazla 45 sn'de bir) + geçilen durak eleme + 10 km üstü duraklar için haversine | K-1 |
 | T1.2 | Sürücü oturumu kendini yeniler: 12 dakikada bir sessiz refresh, 401'de tek seferlik yeniden deneme, 3 başarısızlıkta net uyarı | K-2 |
-| T1.3 | Wake Lock + 30 sn'lik kalp atışı + panelde 90 sn sessizlikte "bağlantı koptu" rozeti | K-3 |
+| T1.3 ⚠️ | Wake Lock + 30 sn'lik kalp atışı + panelde 90 sn sessizlikte "bağlantı koptu" rozeti — kalp atışı/rozet kısmı çalışıyor, **Wake Lock ekran kilidini engellemiyor** (bkz. J1) | K-3 kısmen |
 | T1.4 ✅ | `@fastify/rate-limit` (login: IP başına 5/dk) + güzergah seçiminde `ORDER BY created_at` + `super_admin`'e canlı akış izni | R-3, R-5 |
 | T1.5 ✅ | Mesaj metnine şirket adı ve kısa takip linki + `public/track.html` (opak, süreli, tek durağa özel link) | R-5 |
 
@@ -371,7 +384,7 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 
 | # | Senaryo | Beklenen | Nasıl |
 |---|---|---|---|
-| **J1** | Ekran kilitli, cepte, 45 dakika | Yayın kesilmez (T1.3 doğrulaması) | SAHA |
+| **J1** ❌ | Ekran kilitli, cepte, 45 dakika | Yayın kesilmez (T1.3 doğrulaması) — **2026-09-04'te gerçek telefon + emülatörde test edildi, FAIL**: ekran kilitlenince ping tamamen duruyor (`navigator.wakeLock.request('screen')` donanım güç tuşuyla kilitlemeyi engelleyemez, tarayıcı sekmeyi arka plana alıp wake lock'u kendisi serbest bırakıyor). Toparlanma güvenilir: unlock + Chrome foreground'a dönünce saniyeler içinde otomatik devam ediyor, veri kaybı/tekrar giriş yok. Web API'leriyle gerçek çözümü yok — sürücü brifingine "ekranı kilitlemeyin" talimatı eklenmeli | SAHA |
 | J2 | Yayın sırasında çağrı gelir | Çağrı bitince kendiliğinden devam | SAHA |
 | J3 | 1 saatlik yayının pil tüketimi | Ölç ve yaz — sürücüye söylenecek sayı | SAHA |
 | J4 | Wi-Fi'dan LTE'ye geçiş | Kesintisiz | SAHA |
@@ -425,7 +438,7 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 | Kriter | Eşik |
 |---|---|
 | Oturum dayanıklılığı | 60 dk kesintisiz yayın, sıfır kopma |
-| Ekran kilidi | 45 dk kilitli, kayıp sinyal ≤ %5 |
+| Ekran kilidi | 45 dk kilitli, kayıp sinyal ≤ %5 — **karşılanmıyor** (J1: kilitliyken %100 kayıp, unlock'ta otomatik toparlanıyor). Operasyonel çözüm: sürücü brifinginde "ekranı kilitleme" talimatı |
 | ETA doğruluğu | Gerçek sürüşte ortalama sapma ≤ 3 dk |
 | Bildirim başarısı | ≥ %98 `sent`, sıfır çift gönderim |
 | Google maliyeti | ≤ $20 / hafta / 3 güzergah |
