@@ -148,6 +148,40 @@ describe('E7 — retention cleanup', () => {
   })
 })
 
+/**
+ * K3 — location_history growth. Rather than a stale hand-guessed number in a
+ * doc, this measures the actual on-disk row size and extrapolates from the
+ * real ingest cadence (10s, RATE_LIMIT_LOCATION_MAX ceiling) so the estimate
+ * moves automatically if a column is ever widened. RETENTION_DAYS is what
+ * actually bounds the total, not this number — this only sizes one week.
+ */
+describe('K3 — location_history weekly growth estimate', () => {
+  it('extrapolates weekly storage from a real row\'s on-disk size', async () => {
+    const inserted = await app.db.query(
+      `INSERT INTO location_history (company_id, route_id, driver_id, lat, lng, heading, speed, recorded_at)
+       VALUES ($1, $2, $3, 41.0, 29.0, 180.5, 12.3, now()) RETURNING id`,
+      [ids.companyId, ids.routeId, ids.driverId],
+    )
+    const { rows } = await app.db.query(
+      'SELECT pg_column_size(t.*) AS bytes FROM location_history t WHERE id = $1',
+      [inserted.rows[0].id],
+    )
+    const bytesPerRow = rows[0].bytes
+    expect(bytesPerRow).toBeGreaterThan(0)
+
+    const pingsPerDayPerRoute = Math.floor(86400 / 10) // one every 10s, the driver.js cadence
+    const ROUTES_IN_PILOT = 3
+    const weeklyBytes = bytesPerRow * pingsPerDayPerRoute * 7 * ROUTES_IN_PILOT
+    const weeklyMB = weeklyBytes / (1024 * 1024)
+
+    // Sanity ceiling, not a tuned budget — catches a column ballooning the row,
+    // not meant to be a precise pilot forecast
+    expect(weeklyMB).toBeLessThan(200)
+
+    await app.db.query('DELETE FROM location_history WHERE id = $1', [inserted.rows[0].id])
+  })
+})
+
 describe('E12 — super_admin read-only support access', () => {
   it('returns 400 when companyId is not given', async () => {
     const res = await app.inject({
