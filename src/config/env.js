@@ -132,6 +132,11 @@ export const env = {
   TRACK_TOKEN_TTL_SECONDS: Number(process.env.TRACK_TOKEN_TTL_SECONDS ?? 4 * 3600),
 
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
+  // Telegram sends this back in X-Telegram-Bot-Api-Secret-Token on every
+  // webhook call when setWebhook was called with the same secret_token
+  // (see scripts/telegram-set-webhook.js) — without it anyone could POST
+  // fake /start updates and hijack a passenger's invite code
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET ?? null,
   NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
   NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,
   NETGSM_MSGHEADER: process.env.NETGSM_MSGHEADER ?? null,

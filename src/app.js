@@ -21,6 +21,7 @@ import locationRoutes from './routes/v1/locations/index.js'
 import tripRoutes from './routes/v1/trips/index.js'
 import historyRoutes from './routes/v1/history/index.js'
 import trackRoutes from './routes/v1/track/index.js'
+import telegramRoutes from './routes/v1/telegram/index.js'
 import { budgetKey } from './services/eta/distance.js'
 import { EmptyUpdateError } from './utils/sql.js'
 import { getWorkerHealth } from './workers/index.js'
@@ -113,6 +114,7 @@ export async function buildApp(opts = {}) {
   await fastify.register(tripRoutes, { prefix: '/api/v1/trips' })
   await fastify.register(historyRoutes, { prefix: '/api/v1/history' })
   await fastify.register(trackRoutes, { prefix: '/api/v1/track' })
+  await fastify.register(telegramRoutes, { prefix: '/api/v1/telegram' })
 
   // Health check (for the Railway probe — lightweight, touches no dependencies)
   fastify.get('/health', { logLevel: 'silent' }, async () => ({ status: 'ok' }))
