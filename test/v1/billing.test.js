@@ -256,7 +256,12 @@ describe('passenger quota (C6)', () => {
       method: 'POST',
       url: '/api/v1/passengers',
       headers: auth('company_admin', ids.adminId),
-      payload: { stopId: ids.stopId, fullName: 'Kotayı Aşan', telegramChatId: '1' },
+      payload: {
+        stopId: ids.stopId,
+        fullName: 'Kotayı Aşan',
+        telegramChatId: '1',
+        consentGiven: true,
+      },
     })
     expect(res.statusCode).toBe(402)
     expect(res.json().message).toContain('1/1')
@@ -270,7 +275,12 @@ describe('passenger quota (C6)', () => {
       method: 'POST',
       url: '/api/v1/passengers',
       headers: auth('company_admin', ids.adminId),
-      payload: { stopId: ids.stopId, fullName: 'Kota İçi', telegramChatId: '2' },
+      payload: {
+        stopId: ids.stopId,
+        fullName: 'Kota İçi',
+        telegramChatId: '2',
+        consentGiven: true,
+      },
     })
     expect(res.statusCode).toBe(201)
     await app.db.query('DELETE FROM passengers WHERE id = $1', [res.json().id])

@@ -313,6 +313,7 @@ describe('a company_id in the body cannot override the JWT', () => {
       stopId: A.stopId,
       fullName: 'Tenant Test',
       telegramChatId: '1',
+      consentGiven: true,
       // The schema drops this via additionalProperties:false + removeAdditional;
       // even if it did not, the insert takes company_id from the JWT
       companyId: B.companyId,

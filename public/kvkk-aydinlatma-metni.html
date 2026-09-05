@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KVKK Aydınlatma Metni</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.6;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin-top: 2rem; color: #93c5fd; }
+    .meta { color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .draft-notice {
+      background: #422006; border: 1px solid #b45309; color: #fde68a;
+      border-radius: 8px; padding: 0.9rem 1rem; font-size: 0.9rem; margin-bottom: 1.5rem;
+    }
+    table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.92rem; }
+    th, td { border: 1px solid #334155; padding: 0.5rem 0.6rem; text-align: left; }
+    th { background: #1e293b; }
+    .consent { background: #1e293b; border-radius: 10px; padding: 1rem 1.2rem; margin-top: 2rem; font-style: italic; }
+    a { color: #93c5fd; }
+  </style>
+</head>
+<body>
+  <div class="draft-notice">
+    <strong>Bu metin bir taslaktır</strong>, hukuki onay gerektirir. Köşeli
+    parantez içindeki alanlar ([ŞİRKET ADI] vb.) müşteri bilgileriyle
+    doldurulmalı.
+  </div>
+
+  <h1>KVKK Aydınlatma Metni — ShuttlePing Servis Bildirimi</h1>
+  <div class="meta">Sürüm: taslak-1 · Tarih: 2026-09-03</div>
+
+  <h2>1. Veri Sorumlusu</h2>
+  <p>[ŞİRKET ADI], 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK")
+  uyarınca veri sorumlusudur.</p>
+  <ul>
+    <li>Adres: [ADRES]</li>
+    <li>E-posta: [İLETİŞİM E-POSTASI]</li>
+    <li>Telefon: [İLETİŞİM TELEFONU]</li>
+  </ul>
+
+  <h2>2. İşlenen Kişisel Veriler</h2>
+  <table>
+    <tr><th>Veri</th><th>Kaynak</th><th>Neden gerekli</th></tr>
+    <tr><td>Ad soyad</td><td>Şirket</td><td>Bildirimde hitap, kayıt eşleştirme</td></tr>
+    <tr><td>Telefon numarası</td><td>Şirket</td><td>SMS bildirimi</td></tr>
+    <tr><td>Telegram sohbet kimliği</td><td>Siz (bota /start)</td><td>Telegram bildirimi</td></tr>
+    <tr><td>Bindiğiniz durak</td><td>Şirket</td><td>Servisin yaklaşmasını hesaplamak</td></tr>
+    <tr><td>Bildirim gönderim kaydı</td><td>Sistem</td><td>Hizmetin doğrulanması</td></tr>
+  </table>
+  <p><strong>İşlenmeyen veri:</strong> Kendi konumunuz hiçbir şekilde
+  toplanmaz — yalnızca servis aracının konumu işlenir.</p>
+
+  <h2>3. İşleme Amaçları ve Hukuki Sebep</h2>
+  <p>Kişisel verileriniz, servis aracı durağınıza yaklaştığında otomatik
+  bildirim gönderilmesi amacıyla, <strong>KVKK m.5/1 uyarınca açık
+  rızanıza dayanılarak</strong> işlenir. Rızanızı istediğiniz zaman geri
+  çekebilirsiniz; geri çektiğinizde bildirim hizmeti sizin için durur.</p>
+
+  <h2>4. Kişisel Verilerin Aktarılması</h2>
+  <ul>
+    <li><strong>Telegram</strong> (Telegram FZ-LLC, BAE) — yalnızca Telegram kanalı seçiliyse</li>
+    <li><strong>Netgsm A.Ş.</strong> (Türkiye) — yalnızca SMS kanalı seçiliyse</li>
+  </ul>
+  <p>Başka hiçbir üçüncü tarafa veri satılmaz veya paylaşılmaz.</p>
+
+  <h2>5. Saklama Süresi</h2>
+  <ul>
+    <li>Bildirim gönderim kayıtları: en fazla 365 gün</li>
+    <li>Araç konum geçmişi: en fazla 90 gün</li>
+    <li>Yolcu kaydınız: hizmet süresince veya rıza geri çekilene kadar</li>
+  </ul>
+
+  <h2>6. Haklarınız (KVKK m.11)</h2>
+  <p>Şirkete başvurarak verinizin işlenip işlenmediğini öğrenme, bilgi
+  talep etme, düzeltilmesini/silinmesini isteme ve <strong>rızanızı geri
+  çekme</strong> haklarına sahipsiniz. Başvuru: [İLETİŞİM E-POSTASI]</p>
+
+  <div class="consent">
+    "Yukarıdaki KVKK Aydınlatma Metni'ni okudum. Ad-soyad, telefon numaram
+    ve/veya Telegram sohbet kimliğimin, servis aracı durağıma yaklaştığında
+    bana otomatik bildirim gönderilmesi amacıyla [ŞİRKET ADI] tarafından
+    işlenmesine açık rıza veriyorum."
+  </div>
+</body>
+</html>
