@@ -67,6 +67,65 @@
 > rozeti de doğru çalışıyor. Web API'leriyle kalıcı bir çözümü yok; T1.3 ve J1
 > satırları ve "Geçiş kriterleri" tablosundaki "Ekran kilidi" satırı buna göre
 > işaretlendi. Operasyonel çözüm sürücü brifingi: ekranı kilitlemeyin.
+>
+> **GÜNCELLEME (2026-09-03) — K1 geri yükleme tatbikatı yapıldı, BAŞARILI.**
+> `npm run backup` ile dump alındı, docker üzerinde boş `restore_drill`
+> veritabanı açılıp `scripts/restore.js` ile yüklendi, tüm 14 tablo geldi ve
+> `companies` satır sayısı kaynak DB ile eşleşti (18=18). Doğrulama panelden
+> değil SQL count ile yapıldı — panelden doğrulama hâlâ EL. Tatbikat DB'si
+> silindi, dev veritabanına dokunulmadı.
+>
+> **GÜNCELLEME (2026-09-03, devam) — T2.1 Katman 1 telefon testi yapıldı, BAŞARILI.**
+> USB'deki gerçek test telefonunda `adb reverse tcp:3000 tcp:3000` +
+> `adb forward tcp:9222 localabstract:chrome_devtools_remote` ile gerçek Chrome,
+> gerçek `driver.html` açıldı. `scripts/drive-phone.js` CDP üzerinden GPS'i
+> güzergah boyunca sürdü, sürücü girişi/yayın otomatik tetiklendi, sayfa
+> "Canlı 🟢" durumunu gösterdi. `npm run demo:reset` ile sefer kapatıldı.
+> Kanıtladı: tarayıcı davranışı, oturum akışı, izin akışı, uçtan uca demo.
+> Kanıtlamadı (Katman 1'in doğası gereği): gerçek GPS gürültüsü, pil, şebeke
+> geçişleri, ekran kilidi (USB bağlıyken ekran açık kalıyor) — bunlar için
+> Katman 2 (sahte GPS uygulaması + tünel + 45 dk kilit testi) hâlâ gerekiyor,
+> bu SAHA/EL bir adım.
+>
+> **GÜNCELLEME (2026-09-03, devam) — T2.3 ve T2.4 kod tarafı tamamlandı.**
+> **T2.3:** `passengers.invite_code` migration'ı (012), `POST
+> /api/v1/telegram/webhook` route'u, `scripts/telegram-set-webhook.js`
+> (prod'da HTTPS domain hazır olunca tek seferlik çalıştırılacak). Yolcu
+> artık bota "/start KOD" yazınca `telegram_chat_id` otomatik bağlanıyor;
+> panelde davet kodu gösteriliyor. 4 testle doğrulandı
+> (`test/v1/telegram.test.js`). **T2.4:** `docs/KVKK-AYDINLATMA-METNI.md` +
+> `public/kvkk-aydinlatma-metni.html` taslağı (migration 013:
+> `consent_given_at`/`consent_version`); `POST /api/v1/passengers` artık
+> `consentGiven:true` olmadan 400 döner, panelde onay kutusu zorunlu. Tüm
+> paket testi (195/195) ve `npm run lint` yeşil, `admin` build'i geçti.
+> Kalan hukuki/hesap adımları (metindeki [ŞİRKET ADI] alanlarının
+> doldurulup onaylanması, Netgsm başlık başvurusu, prod'da webhook'un
+> gerçekten set edilmesi) kullanıcıda.
+>
+> **T2.2 (kısmen):** `.github/workflows/backup.yml` eklendi — her gün
+> 02:00 UTC'de `npm run backup`, artifact olarak 35 gün saklanıyor. Aktif
+> olması için Railway TCP Proxy + GitHub secret adımı kullanıcıda (bkz.
+> `docs/SENIN-ADIMLARIN.md` §5.7). Railway'e gerçek deploy (hesap/ödeme
+> kararı) kullanıcıda. **T2.1 (araç hazırlığı):** `cloudflared` kuruldu,
+> `npm run demo:tunnel` eklendi (Katman 2 için gerçek HTTPS tüneli) —
+> gerçek telefon testi (Katman 1/2) kullanıcının onayıyla ayrı ele
+> alınacak, bu güncellemeye dahil değil.
+>
+> **GÜNCELLEME (2026-09-03, devam) — Katman 2 (gerçek HTTPS, USB dışı ağ
+> yolu) test edildi, BAŞARILI.** `cloudflared tunnel --url
+> http://localhost:3000` ile gerçek `*.trycloudflare.com` HTTPS adresi
+> açıldı, telefonda o adresten `driver.html` yüklendi (Docker Desktop bu
+> sırada kapanmıştı, yeniden başlatılıp DB/Redis geri ayağa kaldırıldı).
+> Yeni origin için konum izni ilk kez isteniyordu — sistem izin
+> diyaloğunda "Allow while visiting the site" telefondan onaylandı (adb
+> `input tap`), sonrasında `drive-phone.js` CDP üzerinden GPS'i sürdü,
+> sayfa "Canlı 🟢" durumunu gösterdi. Kanıtladı: gerçek internet
+> üzerinden HTTPS erişimi, izin akışının yeni origin'de de çalıştığı.
+> Kanıtlamadı: bu hâlâ USB bağlı/DevTools kontrollü — ekran açık kaldı;
+> gerçek Katman 2 (kablosuz, sahte GPS uygulaması, ekran kilitli 45 dk)
+> hâlâ SAHA/EL adımı — ve zaten J1 bulgusuna göre ekran kilidi bu
+> mimaride konum göndermeyi durduruyor, o sonuç değişmedi. Sefer
+> `npm run demo:reset` ile kapatıldı, tünel süreci sonlandırıldı.
 
 Bir şirkete sunum yapmak ve bir haftalık deneme (pilot) koşmak için gereken
 hazırlık. Bulguların tamamı `1e9b07f` üzerinde kod okunarak doğrulandı.
@@ -399,7 +458,7 @@ Nasıl sütunu: OTO = otomatik test, EL = elle, SAHA = telefon/araç.
 
 | # | Senaryo | Beklenen | Nasıl |
 |---|---|---|---|
-| **K1** | Geri yükleme tatbikatı: yedek al, boş veritabanına yükle, panelden doğrula | Veri eksiksiz. Denenmemiş yedek yedek değildir | EL |
+| **K1** ✅ | Geri yükleme tatbikatı: yedek al, boş veritabanına yükle, panelden doğrula | Veri eksiksiz. Denenmemiş yedek yedek değildir | EL |
 | K2 | Günlük yedeğin zamanlanmış koşusu | Dosya oluşur, boyut makul, başarısızlıkta uyarı | EL |
 | K3 ✅ | 1 haftalık `location_history` büyümesi | Aylık tahmin + saklama süresi kararı | OTO |
 | K4 | "Verilerimi silin" talebi | Yolcu ve izleri için tanımlı adım var | EL |

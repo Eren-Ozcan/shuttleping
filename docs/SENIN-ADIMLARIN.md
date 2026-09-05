@@ -79,6 +79,18 @@ build command'ı artık ek bir nixpacks config'e gerek kalmadan çalışır.
 5. Domain: Railway'in verdiği `*.up.railway.app` domain'i HTTPS'lidir —
    sürücü sayfası (geolocation) HTTPS zorunlu olduğu için bu önemli
 6. Staging istiyorsan aynı repo'dan ikinci bir Railway environment aç
+7. **Günlük yedek zamanlaması** (T2.2) — `.github/workflows/backup.yml` hazır
+   (her gün 02:00 UTC'de `npm run backup`, sonucu GitHub Actions artifact'i
+   olarak 35 gün saklıyor). Aktif olması için:
+   - Railway → Postgres servisi → Settings → **TCP Proxy** aç, dışarıdan
+     erişilebilir bağlantı dizesini kopyala
+   - GitHub repo → Settings → Secrets and variables → Actions →
+     `DATABASE_URL` adıyla o bağlantı dizesini secret olarak ekle
+   - Sonra Actions sekmesinden "Daily backup" workflow'unu elle bir kez
+     çalıştırıp (`workflow_dispatch`) doğrula
+8. **Telegram webhook** (T2.3) — domain hazır olunca bir kez:
+   `npm run telegram:set-webhook -- https://<domain>` (önce `.env`'e
+   `TELEGRAM_WEBHOOK_SECRET` için rastgele bir değer koy)
 
 ## 6. İlk super_admin kullanıcısı (tek seferlik)
 Bu akış (super_admin → şirket → admin → route/durak/araç/sürücü/yolcu →
