@@ -1,0 +1,50 @@
+name: Daily backup
+
+# T2.2 — prod DB'nin günlük pg_dump'ı, GitHub Actions artifact olarak.
+#
+# Bu workflow prod'daki DATABASE_URL'i GitHub Actions repo secret'ı olarak
+# ister — kod hazır, ama aktif olması için hâlâ elle yapılması gereken var:
+#   1. Railway'de Postgres servisinde "TCP Proxy" (public networking) aç,
+#      dışarıdan erişilebilir bağlantı dizesini al.
+#   2. GitHub repo → Settings → Secrets and variables → Actions →
+#      DATABASE_URL adıyla bu bağlantı dizesini ekle.
+# Bu iki adım hesap/Railway erişimi gerektirdiği için burada bırakıldı.
+#
+# Artifact'lar GitHub'ın varsayılan saklama süresine tabi (aşağıda 35 gün
+# ile sınırlandı) — uzun vadeli/off-site saklama için (ör. S3) ayrı bir adım
+# gerekir, MVP için artifact yeterli.
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Her gün 02:00 UTC (05:00 Europe/Istanbul)
+  workflow_dispatch: {} # Elle de tetiklenebilir
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: pg_dump al
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret'ı tanımlı değil — bkz. bu dosyanın başındaki kurulum notu" >&2
+            exit 1
+          fi
+          npm run backup
+
+      - name: Yedeği artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shuttleping-backup-${{ github.run_id }}
+          path: backups/*.dump
+          retention-days: 35
