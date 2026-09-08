@@ -9,8 +9,8 @@ services:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Testler ayrı bir veritabanına yazar; bu script container ilk kez
-      # oluşturulurken onu yaratır (yalnızca boş volume'da çalışır)
+      # Tests write to a separate database; this script creates it when the
+      # container is first created (it only runs on an empty volume)
       - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
     restart: unless-stopped
     healthcheck:
