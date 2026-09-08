@@ -138,7 +138,7 @@ test/
 | F | Test/ops — izolasyon testleri, ayrı test DB, dry-run, CI, deploy, restore | ✅ Tamamlandı |
 | G | Dokümantasyon dürüstlüğü | ✅ Tamamlandı |
 
-Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
+Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/YOUR-STEPS.md`
 
 ## Environment Variables
 `.env.example` dosyasına bak. `src/config/env.js` başlangıçta zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Üretimde ek kontroller var: `CORS_ORIGIN` zorunlu ve localhost/`*` olamaz, `JWT_ACCESS_SECRET` en az 32 karakter ve örnek değer içeremez. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.

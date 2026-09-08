@@ -20,7 +20,7 @@
 | Notifications | Telegram Bot API, Netgsm SMS |
 | Admin UI | React + Vite (live map, companies, routes, vehicles, passengers) |
 | Logging | Pino structured JSON |
-| Hosting | Railway config in `railway.json` — **not yet deployed** (see `docs/SENIN-ADIMLARIN.md`) |
+| Hosting | Railway config in `railway.json` — **not yet deployed** (see `docs/YOUR-STEPS.md`) |
 
 ## Development
 

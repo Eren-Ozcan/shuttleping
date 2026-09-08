@@ -105,7 +105,7 @@
 > **T2.2 (kısmen):** `.github/workflows/backup.yml` eklendi — her gün
 > 02:00 UTC'de `npm run backup`, artifact olarak 35 gün saklanıyor. Aktif
 > olması için Railway TCP Proxy + GitHub secret adımı kullanıcıda (bkz.
-> `docs/SENIN-ADIMLARIN.md` §5.7). Railway'e gerçek deploy (hesap/ödeme
+> `docs/YOUR-STEPS.md` §5.7). Railway'e gerçek deploy (hesap/ödeme
 > kararı) kullanıcıda. **T2.1 (araç hazırlığı):** `cloudflared` kuruldu,
 > `npm run demo:tunnel` eklendi (Katman 2 için gerçek HTTPS tüneli) —
 > gerçek telefon testi (Katman 1/2) kullanıcının onayıyla ayrı ele
