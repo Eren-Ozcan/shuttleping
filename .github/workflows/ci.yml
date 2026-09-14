@@ -5,15 +5,11 @@ name: CI
 # lock file and a server that died on boot both survived for weeks.
 on:
   push:
-  pull_request:
-    branches: [main]
 
-# A branch that has an open pull request matches both triggers. Grouping by
-# branch name keeps only the newest run alive instead of building it twice:
-# github.ref cannot do this on its own, since the push run sees
-# refs/heads/<branch> while the pull request run sees refs/pull/<n>/merge.
+# Only the newest run per branch survives, so a quick series of pushes does not
+# queue up builds of commits nobody is waiting on any more.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
