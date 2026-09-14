@@ -51,7 +51,7 @@ npm run lint
 ### Tech Stack
 | Katman | Teknoloji |
 |--------|-----------|
-| HTTP | Fastify v4, JSON Schema validation (Ajv) |
+| HTTP | Fastify v5, JSON Schema validation (Ajv) |
 | Veritabanı | PostgreSQL + pg-pool, node-pg-migrate |
 | Kuyruk | BullMQ + Redis (AOF persistence) |
 | Auth | JWT access token (15dk) + opaque refresh token (7g, HttpOnly cookie) |

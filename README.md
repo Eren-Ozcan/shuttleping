@@ -13,7 +13,7 @@
 
 | Layer | Technology |
 |-------|------------|
-| HTTP API | Fastify v4 + JSON Schema (Ajv) validation |
+| HTTP API | Fastify v5 + JSON Schema (Ajv) validation |
 | Database | PostgreSQL (pg-pool, node-pg-migrate) |
 | Job queue | BullMQ + Redis (AOF persistence) |
 | Auth | JWT access tokens (15 min) + opaque refresh tokens (7 days, HttpOnly cookie) |
