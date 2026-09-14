@@ -1,0 +1,34 @@
+Copyright (c) 2026 Eren Ozcan. All rights reserved.
+
+This repository, including its source code, assets, and accompanying
+materials (the "Work"), is the proprietary property of the copyright
+holder.
+
+NO LICENSE IS GRANTED. Except as expressly permitted in advance and in
+writing by the copyright holder, you may not:
+
+  * copy, reproduce, or redistribute the Work or any part of it;
+  * modify, adapt, translate, or create derivative works from it;
+  * publish, sublicense, sell, rent, lease, or otherwise commercially
+    exploit it;
+  * use the Work, in whole or in part, in any other product, game,
+    application, or service, whether commercial or non-commercial;
+  * reverse engineer, decompile, or disassemble compiled builds, except
+    to the extent that such a restriction is unenforceable under
+    applicable law.
+
+Viewing this repository and creating a fork of it on GitHub, as provided
+for by the GitHub Terms of Service, does not grant any of the rights
+listed above.
+
+Third-party components included in or fetched by this repository remain
+subject to their own licenses. Where present, see THIRD-PARTY-NOTICES.md
+and the license files distributed alongside those components.
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE WORK OR THE USE OR OTHER
+DEALINGS IN THE WORK.
