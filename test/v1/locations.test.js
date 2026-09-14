@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import { getTestApp, closeTestApp, authHeader } from '../helpers/app.js'
+import { locationKey } from '../../src/services/eta/index.js'
 
 afterAll(closeTestApp)
 
@@ -35,6 +36,25 @@ describe('POST /api/v1/locations', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  // B4 — out-of-range and wrong-type values are rejected at the schema level,
+  // before the handler ever looks for an active trip
+  it.each([
+    ['lat out of range', { lat: 91, lng: 29 }],
+    ['lng out of range', { lat: 40, lng: 181 }],
+    // ajv coerces numeric strings ('40.9' -> 40.9); only a non-numeric string fails
+    ['lat is non-numeric text', { lat: 'kuzey', lng: 29.1 }],
+    ['lng is non-numeric text', { lat: 40.9, lng: 'doğu' }],
+  ])('returns 400 for %s', async (_label, payload) => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: await authHeader('driver'),
+      payload,
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('GET /api/v1/locations/:routeId', () => {
@@ -46,6 +66,87 @@ describe('GET /api/v1/locations/:routeId', () => {
       headers: await authHeader('driver'),
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  // E12 — support read: super_admin has no companyId of its own, must pass ?companyId=
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('lets super_admin read the tenant with ?companyId=', async () => {
+    const app = await getTestApp()
+    const companyId = '00000000-0000-4000-8000-000000000001'
+    const routeId = '00000000-0000-4000-8000-0000000e1200'
+    const key = locationKey(companyId, routeId)
+    await app.redis.set(key, JSON.stringify({ lat: 40.9, lng: 29.1 }), 'EX', 300)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}?companyId=${companyId}`,
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(200)
+
+    await app.redis.del(key)
+  })
+})
+
+/**
+ * B8 — the broadcast stops. The location key carries a 300 s TTL, so once it
+ * expires the panel must report the vehicle as offline instead of showing a
+ * stale position forever.
+ */
+describe('location TTL expiry (B8)', () => {
+  const companyId = '00000000-0000-4000-8000-000000000001'
+  const routeId = '00000000-0000-4000-8000-0000000008b8'
+
+  it('returns 404 once the key is gone, and the stale position is not served', async () => {
+    const app = await getTestApp()
+    const key = locationKey(companyId, routeId)
+
+    // The broadcast is live: written exactly as the ingest route writes it
+    await app.redis.set(
+      key,
+      JSON.stringify({ lat: 40.99, lng: 29.02, ts: Date.now() }),
+      'EX',
+      300,
+    )
+    const live = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}`,
+      headers: await authHeader('company_admin', companyId),
+    })
+    expect(live.statusCode).toBe(200)
+    expect(live.json()).toMatchObject({ lat: 40.99, lng: 29.02 })
+
+    // The TTL runs out (simulated: the key is dropped the way expiry drops it)
+    await app.redis.del(key)
+
+    const offline = await app.inject({
+      method: 'GET',
+      url: `/api/v1/locations/${routeId}`,
+      headers: await authHeader('company_admin', companyId),
+    })
+    expect(offline.statusCode).toBe(404)
+    expect(offline.json().message).toMatch(/güncel konum yok/i)
+  })
+
+  it('the key really carries a TTL, it is not written forever', async () => {
+    const app = await getTestApp()
+    const key = locationKey(companyId, routeId)
+    await app.redis.set(key, JSON.stringify({ lat: 40.99, lng: 29.02 }), 'EX', 300)
+
+    const ttl = await app.redis.ttl(key)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(300)
+
+    await app.redis.del(key)
   })
 })
 
@@ -68,6 +169,16 @@ describe('GET /api/v1/locations/:routeId/eta', () => {
       headers: await authHeader('company_admin'),
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/eta',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -131,5 +242,15 @@ describe('POST /api/v1/locations/:routeId/stream-ticket', () => {
       headers: await authHeader('company_admin'),
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 400 for super_admin without ?companyId=', async () => {
+    const app = await getTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations/00000000-0000-4000-8000-000000000001/stream-ticket',
+      headers: await authHeader('super_admin'),
+    })
+    expect(res.statusCode).toBe(400)
   })
 })

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShuttlePing Canlı Takip</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; display: grid; place-items: center; padding: 1rem;
+    }
+    .card {
+      background: #1e293b; border-radius: 14px; padding: 1.5rem;
+      width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 0.8rem;
+      text-align: center;
+    }
+    h1 { font-size: 1.1rem; }
+    .company { color: #94a3b8; font-size: 0.85rem; }
+    .eta { font-size: 2.4rem; font-weight: 700; color: #4ade80; }
+    .eta.arrived { color: #fbbf24; }
+    .stop { font-size: 1rem; }
+    .muted { color: #94a3b8; font-size: 0.8rem; }
+    .err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚌 Canlı Takip</h1>
+    <div id="company" class="company"></div>
+    <div id="stop" class="stop"></div>
+    <div id="eta" class="eta">—</div>
+    <div id="note" class="muted">Yükleniyor...</div>
+  </div>
+
+  <script src="/track.js"></script>
+</body>
+</html>

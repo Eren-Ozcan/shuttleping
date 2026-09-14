@@ -34,7 +34,7 @@ Tamamı kapatıldı. Detaylı gerekçe için `docs/PILOT-READINESS.md` ve git ge
       yalnızca geçilmemiş duraklar sorulur, rota başına adaptif throttle (45 sn yakın /
       300 sn uzak), hareket eşiği, 10 km üstü haversine, günlük element bütçesi.
       Beklenen düşüş ~%95. Kalan aksiyon **sende**: Cloud Console'da "Routes API"yi
-      etkinleştir (bkz. `docs/SENIN-ADIMLARIN.md` Adım 3)
+      etkinleştir (bkz. `docs/YOUR-STEPS.md` Adım 3)
 - [x] **K-2: Sürücü 15 dakika sonra yayından düşüyordu** → 12 dk'da bir sessiz
       `/auth/refresh`, 401'de tek retry
 - [x] **K-3: Telefon kilitlenince konum akışı susuyordu** → Wake Lock, 30 sn heartbeat,
@@ -66,14 +66,25 @@ Tamamı kapatıldı. Detaylı gerekçe için `docs/PILOT-READINESS.md` ve git ge
 - [x] CI yoktu, deploy config repoda yoktu, restore script'i yoktu — üçü de eklendi
       (restore yerelde tatbik edildi, tüm tablo sayıları eşleşti)
 
-## Bekleyen adımlar 📋 (`docs/SENIN-ADIMLARIN.md`'de detaylı anlatım var)
+## Bekleyen adımlar 📋 (`docs/YOUR-STEPS.md`'de detaylı anlatım var)
 - [ ] **Netgsm SMS hesabı** — kullanıcı kararıyla en sona bırakıldı; başvuru onayı günler sürebileceği için erkenden başlatılması öneriliyor
 - [ ] **Railway kurulumu** — trial bitti, devam etmek için Hobby plan ($5/ay) + kart bağlama kararı kullanıcıda; karar verilince proje + Postgres + Redis + env değişkenleri + build/deploy ayarları yapılacak
 - [ ] **Google Cloud'da "Routes API"yi etkinleştir** — kod legacy Distance Matrix'ten
       Routes API'ye geçti; etkinleştirilmezse sistem sessizce haversine'e düşer
       (canlı haritada "kaba tahmin" uyarısı ve `/health/deep` ile görülebilir)
 - [ ] Railway'e bağlı: ilk prod super_admin, ilk gerçek şirket kurulumu, prod yedekleme zamanlaması (Railway cron / GitHub Actions kararı)
-- [ ] (Opsiyonel iyileştirme fikri, henüz backlog'da) Telegram `/start` webhook'u — yolcu chat ID'sini `getUpdates` ile manuel çekmek yerine otomatik panele düşürmek
+- [x] Telegram `/start` webhook'u (T2.3) — davet kodu akışı eklendi: her yolcuya
+      `invite_code` üretiliyor, panelde gösteriliyor, yolcu bota "/start KOD"
+      yazınca `telegram_chat_id` otomatik bağlanıyor. Prod'da tek seferlik
+      `npm run telegram:set-webhook -- https://<domain>` çalıştırılması gerekiyor
+      (HTTPS domain'e bağlı — Railway kurulumunu bekliyor)
+- [x] KVKK aydınlatma metni + açık rıza akışı (T2.4, taslak) —
+      `docs/KVKK-AYDINLATMA-METNI.md` / `public/kvkk-aydinlatma-metni.html`
+      taslağı yazıldı; yolcu API'si artık `consentGiven:true` olmadan kayıt
+      kabul etmiyor (`passengers.consent_given_at`/`consent_version`).
+      Kalan: metindeki [ŞİRKET ADI] vb. alanların doldurulması ve hukuki onay
+      — bu kullanıcıda. Netgsm SMS başlık başvurusu kurumsal hesap/imza
+      gerektirdiği için yapılamadı, kullanıcıda kalıyor
 
 ## Ürün / satış kararları 💡 (mutabık kalınan)
 - MVP: **SMS varsayılan + canlı takip linki + Telegram opsiyonu** — yolcuya app indirtme yok

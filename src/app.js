@@ -20,6 +20,8 @@ import passengerRoutes from './routes/v1/passengers/index.js'
 import locationRoutes from './routes/v1/locations/index.js'
 import tripRoutes from './routes/v1/trips/index.js'
 import historyRoutes from './routes/v1/history/index.js'
+import trackRoutes from './routes/v1/track/index.js'
+import telegramRoutes from './routes/v1/telegram/index.js'
 import { budgetKey } from './services/eta/distance.js'
 import { EmptyUpdateError } from './utils/sql.js'
 import { getWorkerHealth } from './workers/index.js'
@@ -30,7 +32,12 @@ import { closeQueues, getQueueDepths } from './queues/index.js'
  */
 export async function buildApp(opts = {}) {
   const fastify = Fastify({
-    logger: opts.logger !== undefined ? opts.logger : logger,
+    // Fastify 5 takes a ready-made pino instance through loggerInstance;
+    // the logger option now only accepts a plain configuration object, so
+    // `logger: false` from the tests still has to go through logger
+    ...(opts.logger === undefined
+      ? { loggerInstance: logger }
+      : { logger: opts.logger }),
     ajv: {
       customOptions: {
         removeAdditional: true,
@@ -89,6 +96,10 @@ export async function buildApp(opts = {}) {
     timeWindow: '1 minute',
     redis: fastify.redis,
     nameSpace: 'rl:',
+    // Fail open: if Redis is unreachable the limiter must not take the API
+    // down with it. Losing the limit for the length of an outage is the
+    // cheaper failure — every request otherwise hangs in this preHandler.
+    skipOnError: true,
     keyGenerator: (request) => request.user?.sub ?? request.ip,
     errorResponseBuilder: () => ({
       statusCode: 429,
@@ -107,6 +118,8 @@ export async function buildApp(opts = {}) {
   await fastify.register(locationRoutes, { prefix: '/api/v1/locations' })
   await fastify.register(tripRoutes, { prefix: '/api/v1/trips' })
   await fastify.register(historyRoutes, { prefix: '/api/v1/history' })
+  await fastify.register(trackRoutes, { prefix: '/api/v1/track' })
+  await fastify.register(telegramRoutes, { prefix: '/api/v1/telegram' })
 
   // Health check (for the Railway probe — lightweight, touches no dependencies)
   fastify.get('/health', { logLevel: 'silent' }, async () => ({ status: 'ok' }))

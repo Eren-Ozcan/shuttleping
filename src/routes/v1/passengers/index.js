@@ -5,6 +5,7 @@ import {
 } from './schema.js'
 import { buildUpdate } from '../../../utils/sql.js'
 import { checkPassengerQuota } from '../../../services/billing.service.js'
+import { generateInviteCode } from '../../../utils/inviteCode.js'
 
 const PASSENGER_COLS = [
   'id',
@@ -12,11 +13,19 @@ const PASSENGER_COLS = [
   'full_name AS "fullName"',
   'phone',
   'telegram_chat_id AS "telegramChatId"',
+  'invite_code AS "inviteCode"',
+  'consent_given_at AS "consentGivenAt"',
   'notification_channel AS "notificationChannel"',
   'notify_before_minutes AS "notifyBeforeMinutes"',
   'is_active AS "isActive"',
   'created_at AS "createdAt"',
 ]
+
+const UNIQUE_VIOLATION = '23505'
+const INVITE_CODE_ATTEMPTS = 5
+// Matches the "Sürüm" line in docs/KVKK-AYDINLATMA-METNI.md — bump both
+// together when the disclosure text materially changes
+const CONSENT_VERSION = 'taslak-1'
 
 /** Builds the column list with an optional table alias: passengerColumns('p.') */
 const passengerColumns = (prefix = '') =>
@@ -94,24 +103,36 @@ export default async function passengerRoutes(fastify) {
         )
       }
 
-      const { rows } = await fastify.db.query(
-        `INSERT INTO passengers
-           (company_id, stop_id, full_name, phone, telegram_chat_id,
-            notification_channel, notify_before_minutes)
-         VALUES ($1, $2, $3, $4, $5,
-                 COALESCE($6, 'telegram'), COALESCE($7, 10))
-         RETURNING ${passengerColumns()}`,
-        [
-          companyId,
-          stopId,
-          fullName,
-          phone ?? null,
-          telegramChatId ?? null,
-          notificationChannel ?? null,
-          notifyBeforeMinutes ?? null,
-        ],
-      )
-      return reply.code(201).send(rows[0])
+      for (let attempt = 1; attempt <= INVITE_CODE_ATTEMPTS; attempt += 1) {
+        try {
+          const { rows } = await fastify.db.query(
+            `INSERT INTO passengers
+               (company_id, stop_id, full_name, phone, telegram_chat_id,
+                invite_code, consent_given_at, consent_version,
+                notification_channel, notify_before_minutes)
+             VALUES ($1, $2, $3, $4, $5,
+                     $6, now(), $7, COALESCE($8, 'telegram'), COALESCE($9, 10))
+             RETURNING ${passengerColumns()}`,
+            [
+              companyId,
+              stopId,
+              fullName,
+              phone ?? null,
+              telegramChatId ?? null,
+              generateInviteCode(),
+              CONSENT_VERSION,
+              notificationChannel ?? null,
+              notifyBeforeMinutes ?? null,
+            ],
+          )
+          return reply.code(201).send(rows[0])
+        } catch (err) {
+          // invite_code collision (astronomically unlikely at 8 chars/33-symbol
+          // alphabet, but the index is unique so a retry has to exist) — retry
+          // with a fresh code instead of failing the passenger's creation
+          if (err.code !== UNIQUE_VIOLATION || attempt === INVITE_CODE_ATTEMPTS) throw err
+        }
+      }
     },
   )
 

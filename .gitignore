@@ -6,3 +6,6 @@ dist/
 .DS_Store
 backups/
 public/admin/
+
+# Coverage report output (npm run test:coverage)
+coverage/

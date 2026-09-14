@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShuttlePing Debug Kokpiti</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; padding: 1.2rem;
+    }
+    h1 { font-size: 1.2rem; margin-bottom: 1rem; }
+    .row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    input {
+      padding: 0.6rem; border-radius: 8px; border: 1px solid #334155;
+      background: #1e293b; color: #e2e8f0; font: inherit;
+    }
+    button {
+      padding: 0.6rem 1rem; border: none; border-radius: 8px; font: inherit;
+      font-weight: 600; cursor: pointer; background: #16a34a; color: #fff;
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .panel {
+      background: #1e293b; border-radius: 12px; padding: 1rem;
+      max-height: 60vh; overflow: auto;
+    }
+    .panel h2 { font-size: 0.95rem; margin-bottom: 0.6rem; color: #94a3b8; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th, td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #334155; }
+    .ok { color: #4ade80; }
+    .warn { color: #fbbf24; }
+    .err { color: #f87171; }
+    .muted { color: #94a3b8; font-size: 0.85rem; }
+    pre { white-space: pre-wrap; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <h1>ShuttlePing Debug Kokpiti — dev only, T0.5</h1>
+  <div class="row">
+    <input id="email" type="email" placeholder="company_admin e-posta" autocomplete="username" />
+    <input id="password" type="password" placeholder="Şifre" autocomplete="current-password" />
+    <input id="routeId" type="text" placeholder="Güzergah UUID" />
+    <button id="startBtn">İzlemeye Başla</button>
+  </div>
+  <div id="loginStatus" class="muted"></div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Son konum</h2>
+      <pre id="location">—</pre>
+    </div>
+    <div class="panel">
+      <h2>Durak bazlı ETA / dedup durumu</h2>
+      <table>
+        <thead><tr><th>Durak</th><th>Durum</th><th>ETA</th></tr></thead>
+        <tbody id="etaRows"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>Kuyruk derinlikleri (global)</h2>
+      <pre id="queues">—</pre>
+    </div>
+    <div class="panel">
+      <h2>Son 20 bildirim</h2>
+      <table>
+        <thead><tr><th>Yolcu</th><th>Kanal</th><th>Durum</th><th>Neden</th><th>Zaman</th></tr></thead>
+        <tbody id="notifRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/debug.js"></script>
+</body>
+</html>

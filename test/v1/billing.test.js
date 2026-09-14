@@ -256,7 +256,12 @@ describe('passenger quota (C6)', () => {
       method: 'POST',
       url: '/api/v1/passengers',
       headers: auth('company_admin', ids.adminId),
-      payload: { stopId: ids.stopId, fullName: 'Kotayı Aşan', telegramChatId: '1' },
+      payload: {
+        stopId: ids.stopId,
+        fullName: 'Kotayı Aşan',
+        telegramChatId: '1',
+        consentGiven: true,
+      },
     })
     expect(res.statusCode).toBe(402)
     expect(res.json().message).toContain('1/1')
@@ -270,7 +275,12 @@ describe('passenger quota (C6)', () => {
       method: 'POST',
       url: '/api/v1/passengers',
       headers: auth('company_admin', ids.adminId),
-      payload: { stopId: ids.stopId, fullName: 'Kota İçi', telegramChatId: '2' },
+      payload: {
+        stopId: ids.stopId,
+        fullName: 'Kota İçi',
+        telegramChatId: '2',
+        consentGiven: true,
+      },
     })
     expect(res.statusCode).toBe(201)
     await app.db.query('DELETE FROM passengers WHERE id = $1', [res.json().id])
@@ -318,6 +328,55 @@ describe('refresh token family (D9)', () => {
     // Theft detected — the legitimate session must end too, otherwise the
     // attacker keeps refreshing while the user notices nothing
     expect((await refresh(second)).statusCode).toBe(401)
+  })
+
+  // A4 — logout revokes the refresh cookie server-side; a refresh attempt
+  // after logout must fail even though the client still holds the old cookie
+  it('a refresh attempt after logout returns 401 (A4)', async () => {
+    const cookie = await loginCookie(ids.driverEmail)
+
+    const logoutRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      remoteAddress: IP,
+      cookies: { refreshToken: cookie },
+    })
+    expect(logoutRes.statusCode).toBe(200)
+
+    expect((await refresh(cookie)).statusCode).toBe(401)
+  })
+})
+
+// A8 — a signature-tampered access token must be rejected outright, and the
+// error response must not leak the token's decoded payload
+describe('tampered access token (A8)', () => {
+  it('returns 401 for a token with a flipped signature, no payload leak', async () => {
+    const valid = app.jwt.sign({ sub: ids.driverId, role: 'driver', companyId: ids.companyId })
+    const [header, payload, signature] = valid.split('.')
+    // Flip the first character: the last base64url character of an HS256
+    // signature only carries padding bits, so changing it can decode to the
+    // very same 32 signature bytes and leave the token valid
+    const tamperedSig = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1)
+    const tampered = `${header}.${payload}.${tamperedSig}`
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: { authorization: `Bearer ${tampered}` },
+      payload: { lat: 41.0, lng: 29.0 },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.body).not.toContain(ids.driverId)
+  })
+
+  it('returns 401 for a structurally invalid token', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/locations',
+      headers: { authorization: 'Bearer not-a-jwt-at-all' },
+      payload: { lat: 41.0, lng: 29.0 },
+    })
+    expect(res.statusCode).toBe(401)
   })
 })
 

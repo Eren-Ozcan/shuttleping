@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   telegramChatId: '',
   notificationChannel: 'telegram',
   notifyBeforeMinutes: 10,
+  consentGiven: false,
 }
 
 export default function Passengers() {
@@ -59,6 +60,7 @@ export default function Passengers() {
           telegramChatId: form.telegramChatId || undefined,
           notificationChannel: form.notificationChannel,
           notifyBeforeMinutes: Number(form.notifyBeforeMinutes),
+          consentGiven: form.consentGiven,
         },
       })
       setForm({ ...EMPTY_FORM, routeId: form.routeId, stopId: form.stopId })
@@ -121,12 +123,9 @@ export default function Passengers() {
           <option value="sms">SMS</option>
         </select>
         {form.notificationChannel === 'telegram' ? (
-          <input
-            placeholder="Telegram Chat ID"
-            value={form.telegramChatId}
-            onChange={(e) => setForm({ ...form, telegramChatId: e.target.value })}
-            required
-          />
+          <span className="muted">
+            Kaydedince davet kodu üretilir — yolcu bota "/start KOD" yazınca bağlanır
+          </span>
         ) : (
           <input
             placeholder="Telefon (05XX XXX XX XX)"
@@ -146,7 +145,22 @@ export default function Passengers() {
             required
           />
         </label>
-        <button className="btn btn-primary">Yolcu Ekle</button>
+        <label className="inline-label">
+          <input
+            type="checkbox"
+            checked={form.consentGiven}
+            onChange={(e) => setForm({ ...form, consentGiven: e.target.checked })}
+            required
+          />
+          Yolcunun{' '}
+          <a href="/kvkk-aydinlatma-metni.html" target="_blank" rel="noreferrer">
+            KVKK aydınlatma metnini
+          </a>{' '}
+          okuduğunu ve açık rızasını aldım
+        </label>
+        <button className="btn btn-primary" disabled={!form.consentGiven}>
+          Yolcu Ekle
+        </button>
       </form>
 
       {error && <div className="error">{error}</div>}
@@ -171,7 +185,9 @@ export default function Passengers() {
               <td>{p.notificationChannel === 'telegram' ? 'Telegram' : 'SMS'}</td>
               <td className="mono">
                 {p.notificationChannel === 'telegram'
-                  ? (p.telegramChatId ?? '—')
+                  ? p.telegramChatId
+                    ? 'Bağlandı ✅'
+                    : `Kod: ${p.inviteCode ?? '—'}`
                   : (p.phone ?? '—')}
               </td>
               <td>{p.notifyBeforeMinutes} dk</td>

@@ -65,6 +65,18 @@ beforeAll(async () => {
      VALUES ($1, $2, $3, 1)`,
     [ids.companyId, ids.tripId, ids.stopId],
   )
+
+  // C7 — a route with no stops at all (e.g. just created, not configured yet)
+  const emptyRoute = await app.db.query(
+    `INSERT INTO routes (company_id, name) VALUES ($1, 'Boş Hat') RETURNING id`,
+    [ids.companyId],
+  )
+  ids.emptyRouteId = emptyRoute.rows[0].id
+  const emptyTrip = await app.db.query(
+    `INSERT INTO trips (company_id, route_id, driver_id) VALUES ($1, $2, $3) RETURNING id`,
+    [ids.companyId, ids.emptyRouteId, ids.driverId],
+  )
+  ids.emptyTripId = emptyTrip.rows[0].id
 })
 
 afterAll(async () => {
@@ -75,10 +87,10 @@ afterAll(async () => {
     )
     await app.db.query('DELETE FROM trip_notifications WHERE trip_id = $1', [ids.tripId])
     await app.db.query('DELETE FROM trip_stops WHERE trip_id = $1', [ids.tripId])
-    await app.db.query('DELETE FROM trips WHERE id = $1', [ids.tripId])
+    await app.db.query('DELETE FROM trips WHERE id = ANY($1)', [[ids.tripId, ids.emptyTripId]])
     await app.db.query('DELETE FROM passengers WHERE id = $1', [ids.passengerId])
     await app.db.query('DELETE FROM stops WHERE id = $1', [ids.stopId])
-    await app.db.query('DELETE FROM routes WHERE id = $1', [ids.routeId])
+    await app.db.query('DELETE FROM routes WHERE id = ANY($1)', [[ids.routeId, ids.emptyRouteId]])
     await app.db.query('DELETE FROM users WHERE id = $1', [ids.driverId])
     await app.db.query('DELETE FROM companies WHERE id = $1', [ids.companyId])
   }
@@ -117,6 +129,23 @@ describe('computeEtaForRoute', () => {
   it('skips the job when there is no location in Redis', async () => {
     const result = await computeEtaForRoute(deps(), target())
     expect(result).toEqual({ skipped: 'no_location' })
+  })
+
+  // C7 — a route with no stops configured must not crash or query the provider
+  it('skips with no_stops for a route that has no stops (C7)', async () => {
+    await app.redis.set(
+      locationKey(ids.companyId, ids.emptyRouteId),
+      JSON.stringify({ lat: 40.99, lng: 29.02, ts: Date.now() }),
+      'EX',
+      60,
+    )
+    const result = await computeEtaForRoute(deps(), {
+      companyId: ids.companyId,
+      routeId: ids.emptyRouteId,
+      tripId: ids.emptyTripId,
+    })
+    expect(result).toEqual({ skipped: 'no_stops' })
+    await app.redis.del(locationKey(ids.companyId, ids.emptyRouteId))
   })
 
   it('enqueues a notification for an ETA under the threshold and writes the ETA to Redis', async () => {

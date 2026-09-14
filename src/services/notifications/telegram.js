@@ -18,7 +18,7 @@ export async function send({ passenger, message }) {
   let res
   try {
     res = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      `${env.TELEGRAM_API_BASE}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -46,4 +46,23 @@ export async function send({ passenger, message }) {
   }
 
   return { ok: true }
+}
+
+/**
+ * Sends a plain message outside the notification-dispatch path — used by the
+ * /start webhook to confirm/reject an invite code. Not logged to
+ * notification_logs (T2.3): this is a one-off UX reply, not a billed passenger notification.
+ */
+export async function sendRaw(chatId, text) {
+  if (!env.TELEGRAM_BOT_TOKEN) return
+  try {
+    await fetch(`${env.TELEGRAM_API_BASE}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (err) {
+    logger.error({ err, chatId }, 'Telegram webhook reply could not be sent')
+  }
 }

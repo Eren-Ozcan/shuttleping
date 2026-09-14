@@ -113,6 +113,11 @@ async function toggleTrip() {
     lastSuccessAt = Date.now()
     startHeartbeat()
     await requestWakeLock()
+    // Wake Lock cannot survive the hardware power button — the browser
+    // suspends watchPosition the moment the screen locks, whatever caused
+    // it (see PILOT-READINESS.md J1). The only real mitigation is asking
+    // the driver not to lock the screen.
+    $('lockWarning').classList.remove('hidden')
     setStatus('Sefer açık — konum bekleniyor…', 'pulse')
   } catch (err) {
     setStatus(err.message, 'err')
@@ -128,6 +133,7 @@ async function endTrip() {
   tripActive = false
   stopHeartbeat()
   releaseWakeLock()
+  $('lockWarning').classList.add('hidden')
   try {
     await authedFetch('/trips/end', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })
   } catch { /* swallow — the trip is being ended anyway */ }
@@ -231,7 +237,12 @@ function startHeartbeat() {
 }
 function stopHeartbeat() { clearInterval(heartbeatTimer) }
 
-// ── Wake Lock: keep watchPosition alive when the screen locks ─────────
+// ── Wake Lock: prevents auto-sleep while the tab is foreground and the ────
+// driver isn't touching the screen. It does NOT survive a hardware power-
+// button lock — the browser releases it and suspends watchPosition the
+// moment the screen locks, whatever caused it (PILOT-READINESS.md J1,
+// tested 2026-09-04). Kept because it still helps the common "phone dims
+// itself" case; the lock case is handled by the on-screen warning instead.
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator) {

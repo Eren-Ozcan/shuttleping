@@ -21,7 +21,10 @@ export const listPassengersSchema = {
 export const createPassengerSchema = {
   body: {
     type: 'object',
-    required: ['stopId', 'fullName'],
+    // consentGiven required (T2.4): docs/KVKK-AYDINLATMA-METNI.md is the
+    // disclosure text shown to the passenger before this checkbox is ticked
+    // in the panel — the API is the enforcement point, not just the UI
+    required: ['stopId', 'fullName', 'consentGiven'],
     additionalProperties: false,
     properties: {
       stopId: { type: 'string', format: 'uuid' },
@@ -30,6 +33,7 @@ export const createPassengerSchema = {
       telegramChatId: { type: 'string', maxLength: 32 },
       notificationChannel: { type: 'string', enum: ['telegram', 'sms'] },
       notifyBeforeMinutes: { type: 'integer', minimum: 1, maximum: 120 },
+      consentGiven: { type: 'boolean', const: true },
     },
   },
 }

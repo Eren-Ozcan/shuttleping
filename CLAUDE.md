@@ -22,6 +22,13 @@ npm run dev                          # Dev server (--watch ile auto-restart)
 
 cd admin && npm install && npm run dev  # Admin panel dev (5173, /api proxy'li)
 npm run build:admin                  # Paneli public/admin'e derle (Fastify servis eder)
+npm run create:super-admin -- <email> <parola> "<Ad>"  # ilk super_admin (prod'da da)
+npm run telegram:chat-id             # bota /start yazanların chat ID'lerini listeler
+npm run seed:demo                    # demo kiracı: şirket+admin+sürücü+8 durak+1 yolcu (idempotent)
+npm run demo:drive                   # telefonsuz sanal sürücü (--base --speed --kmh --stop-at)
+npm run demo:phone -- --base <url>   # USB'deki Android'de gerçek driver.html'i sür (DevTools konum override)
+npm run demo:reset                   # açık seferi kapat + dedup/Redis temizle (prod'da --force ister)
+
 npm run backup                       # pg_dump yedeği (backups/, docker fallback'li)
 npm run restore -- <dump> [--url X]  # Yedeği geri yükle (onay ister; --force ile atlanır)
 ```
@@ -44,7 +51,7 @@ npm run lint
 ### Tech Stack
 | Katman | Teknoloji |
 |--------|-----------|
-| HTTP | Fastify v4, JSON Schema validation (Ajv) |
+| HTTP | Fastify v5, JSON Schema validation (Ajv) |
 | Veritabanı | PostgreSQL + pg-pool, node-pg-migrate |
 | Kuyruk | BullMQ + Redis (AOF persistence) |
 | Auth | JWT access token (15dk) + opaque refresh token (7g, HttpOnly cookie) |
@@ -131,7 +138,7 @@ test/
 | F | Test/ops — izolasyon testleri, ayrı test DB, dry-run, CI, deploy, restore | ✅ Tamamlandı |
 | G | Dokümantasyon dürüstlüğü | ✅ Tamamlandı |
 
-Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/SENIN-ADIMLARIN.md`
+Kullanıcının (Eren) kendisinin yapacağı kurulum adımları: `docs/YOUR-STEPS.md`
 
 ## Environment Variables
 `.env.example` dosyasına bak. `src/config/env.js` başlangıçta zorunlu değişkenleri kontrol eder; eksik olan varsa uygulama başlamaz. Üretimde ek kontroller var: `CORS_ORIGIN` zorunlu ve localhost/`*` olamaz, `JWT_ACCESS_SECRET` en az 32 karakter ve örnek değer içeremez. Railway'de `DATABASE_URL` ve `REDIS_URL` otomatik enjekte edilir.

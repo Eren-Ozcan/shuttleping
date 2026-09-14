@@ -125,10 +125,25 @@ export const env = {
   NOTIFICATION_DRY_RUN: process.env.NOTIFICATION_DRY_RUN === 'true',
   NOTIFICATION_TEST_CHAT_ID: process.env.NOTIFICATION_TEST_CHAT_ID ?? null,
 
+  // Public origin the app is reachable at (Railway URL / tunnel / custom domain).
+  // Used to build the tracking link in the notification text; unset -> no link.
+  PUBLIC_URL: process.env.PUBLIC_URL ?? null,
+  // How long a passenger's tracking link stays valid after the notification fires
+  TRACK_TOKEN_TTL_SECONDS: Number(process.env.TRACK_TOKEN_TTL_SECONDS ?? 4 * 3600),
+
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? null,
+  // Telegram sends this back in X-Telegram-Bot-Api-Secret-Token on every
+  // webhook call when setWebhook was called with the same secret_token
+  // (see scripts/telegram-set-webhook.js) — without it anyone could POST
+  // fake /start updates and hijack a passenger's invite code
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET ?? null,
   NETGSM_USERCODE: process.env.NETGSM_USERCODE ?? null,
   NETGSM_PASSWORD: process.env.NETGSM_PASSWORD ?? null,
   NETGSM_MSGHEADER: process.env.NETGSM_MSGHEADER ?? null,
+  // Overridable so an integration test can point the adapters at a local fake
+  // server (test/helpers/fake-notify-server.js, T0.6) instead of the real API
+  TELEGRAM_API_BASE: process.env.TELEGRAM_API_BASE ?? 'https://api.telegram.org',
+  NETGSM_API_BASE: process.env.NETGSM_API_BASE ?? 'https://api.netgsm.com.tr',
 
   isProd: process.env.NODE_ENV === 'production',
   isDev: process.env.NODE_ENV !== 'production',
