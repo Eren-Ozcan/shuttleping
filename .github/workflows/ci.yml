@@ -1,9 +1,18 @@
 name: CI
 
+# Runs on every branch, not just main: a long-lived feature branch used to get
+# no signal at all until someone opened a pull request, which is how a broken
+# lock file and a server that died on boot both survived for weeks.
 on:
   push:
-    branches: [main]
   pull_request:
+    branches: [main]
+
+# A branch that has an open pull request matches both triggers. Rather than run
+# the suite twice, keep only the newest run per ref alive.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
