@@ -353,7 +353,10 @@ describe('tampered access token (A8)', () => {
   it('returns 401 for a token with a flipped signature, no payload leak', async () => {
     const valid = app.jwt.sign({ sub: ids.driverId, role: 'driver', companyId: ids.companyId })
     const [header, payload, signature] = valid.split('.')
-    const tamperedSig = signature.slice(0, -1) + (signature.at(-1) === 'A' ? 'B' : 'A')
+    // Flip the first character: the last base64url character of an HS256
+    // signature only carries padding bits, so changing it can decode to the
+    // very same 32 signature bytes and leave the token valid
+    const tamperedSig = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1)
     const tampered = `${header}.${payload}.${tamperedSig}`
 
     const res = await app.inject({
