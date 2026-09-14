@@ -8,10 +8,12 @@ on:
   pull_request:
     branches: [main]
 
-# A branch that has an open pull request matches both triggers. Rather than run
-# the suite twice, keep only the newest run per ref alive.
+# A branch that has an open pull request matches both triggers. Grouping by
+# branch name keeps only the newest run alive instead of building it twice:
+# github.ref cannot do this on its own, since the push run sees
+# refs/heads/<branch> while the pull request run sees refs/pull/<n>/merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
