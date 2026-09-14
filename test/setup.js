@@ -39,3 +39,8 @@ for (const key of [
   delete process.env[key]
 }
 process.env.NOTIFICATION_DRY_RUN = 'false'
+
+// app-boot.test.js builds the app with the real pino instance; without this the
+// boot test would dump request logs into the suite output. Every other file
+// passes logger: false, so this affects nothing else.
+process.env.LOG_LEVEL ??= 'silent'
