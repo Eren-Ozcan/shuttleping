@@ -32,7 +32,12 @@ import { closeQueues, getQueueDepths } from './queues/index.js'
  */
 export async function buildApp(opts = {}) {
   const fastify = Fastify({
-    logger: opts.logger !== undefined ? opts.logger : logger,
+    // Fastify 5 takes a ready-made pino instance through loggerInstance;
+    // the logger option now only accepts a plain configuration object, so
+    // `logger: false` from the tests still has to go through logger
+    ...(opts.logger === undefined
+      ? { loggerInstance: logger }
+      : { logger: opts.logger }),
     ajv: {
       customOptions: {
         removeAdditional: true,
