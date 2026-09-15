@@ -8,7 +8,9 @@ name: Daily backup
 #      dışarıdan erişilebilir bağlantı dizesini al.
 #   2. GitHub repo → Settings → Secrets and variables → Actions →
 #      DATABASE_URL adıyla bu bağlantı dizesini ekle.
-# Bu iki adım hesap/Railway erişimi gerektirdiği için burada bırakıldı.
+# Bu iki adım hesap/Railway erişimi gerektirdiği için burada bırakıldı. Secret
+# tanımlı değilken job hata vermez, adımları atlayıp başarıyla biter — böylece
+# deploy öncesi her gece başarısız çalışma bildirimi gelmez.
 #
 # Artifact'lar GitHub'ın varsayılan saklama süresine tabi (aşağıda 35 gün
 # ile sınırlandı) — uzun vadeli/off-site saklama için (ör. S3) ayrı bir adım
@@ -23,27 +25,39 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: DATABASE_URL secret'ı var mı
+        id: secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret'ı tanımlı değil — yedek atlanıyor (bkz. bu dosyanın başındaki kurulum notu)"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+        if: steps.secret.outputs.present == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.secret.outputs.present == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
+        if: steps.secret.outputs.present == 'true'
 
       - name: pg_dump al
+        if: steps.secret.outputs.present == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "DATABASE_URL secret'ı tanımlı değil — bkz. bu dosyanın başındaki kurulum notu" >&2
-            exit 1
-          fi
-          npm run backup
+        run: npm run backup
 
       - name: Yedeği artifact olarak yükle
-        uses: actions/upload-artifact@v4
+        if: steps.secret.outputs.present == 'true'
+        uses: actions/upload-artifact@v5
         with:
           name: shuttleping-backup-${{ github.run_id }}
           path: backups/*.dump
