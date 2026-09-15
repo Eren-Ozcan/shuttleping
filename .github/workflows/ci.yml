@@ -46,9 +46,9 @@ jobs:
       JWT_REFRESH_SECRET: ci_refresh_secret_minimum_32_characters_long
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -78,11 +78,19 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       # High/critical vulnerabilities fail the build; lower ones stay as a report
       - run: npm audit --audit-level=high
+
+      # The admin panel is a separate npm project with its own lock file, so the
+      # audit above never looked at it. It had gone unchecked long enough to
+      # collect four high advisories of its own.
+      - name: Install admin dependencies
+        run: npm --prefix admin ci
+      - name: Audit admin panel
+        run: npm --prefix admin audit --audit-level=high
